@@ -16,67 +16,39 @@
             overflow: hidden; background: #121212; 
             font-family: sans-serif;
         }
-        
         #viewport {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100vw;
-            height: 100vh;
-            position: relative;
+            display: flex; justify-content: center; align-items: center;
+            width: 100vw; height: 100vh; position: relative;
         }
-
-        #my-book {
-            box-shadow: 0 0 50px rgba(0,0,0,0.5);
-            background: #fff;
-            visibility: hidden;
-        }
-
+        #my-book { box-shadow: 0 0 50px rgba(0,0,0,0.5); background: #fff; visibility: hidden; }
         .page { background: white; overflow: hidden; }
-        
-        canvas { 
-            width: 100%; height: 100%; display: block;
-            image-rendering: -webkit-optimize-contrast;
-        }
-
+        canvas { width: 100%; height: 100%; display: block; image-rendering: -webkit-optimize-contrast; }
         .nav-btn {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            background: var(--arrow-bg);
-            border: none;
-            color: white;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            cursor: pointer;
-            z-index: 100;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(5px);
-            font-size: 24px;
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: var(--arrow-bg); border: none; color: white;
+            width: 60px; height: 60px; border-radius: 50%; cursor: pointer;
+            z-index: 100; display: flex; align-items: center; justify-content: center;
+            transition: 0.3s; backdrop-filter: blur(5px); font-size: 24px;
         }
         .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
-        .btn-prev { left: 30px; }
-        .btn-next { right: 30px; }
-
+        .btn-prev { left: 30px; } .btn-next { right: 30px; }
         #loader { 
             position: fixed; top: 50%; left: 50%; 
-            transform: translate(-50%, -50%); color: white; 
+            transform: translate(-50%, -50%); color: white; text-align: center;
         }
+        #debug-url { color: #666; font-size: 10px; margin-top: 10px; word-break: break-all; max-width: 300px; }
     </style>
 </head>
 <body>
 
-<div id="loader">Loading PDF Document...</div>
+<div id="loader">
+    <div id="status-text">Loading PDF Document...</div>
+    <div id="debug-url"></div>
+</div>
 
 <div id="viewport">
     <button class="nav-btn btn-prev" id="prevBtn">❮</button>
-    
     <div id="my-book"></div>
-
     <button class="nav-btn btn-next" id="nextBtn">❯</button>
 </div>
 
@@ -85,8 +57,6 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const urlParams = new URLSearchParams(window.location.search);
-    
-    // Check for either 'pdf' (GitHub filename) or 'id' (Google Drive)
     const githubFile = urlParams.get('pdf');
     const driveId = urlParams.get('id');
 
@@ -94,28 +64,28 @@
         let sourceUrl = '';
 
         if (githubFile) {
-            // Build the URL for GitHub Raw
+            // CRITICAL: Must use raw.githubusercontent.com for actual data
             sourceUrl = `https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/${githubFile}`;
         } else if (driveId) {
             sourceUrl = `https://drive.google.com/uc?export=download&id=${driveId}`;
         } else {
-            document.getElementById('loader').innerHTML = "Error: No PDF source found in URL.";
+            document.getElementById('status-text').innerHTML = "No PDF source provided.";
             return;
         }
 
-        // Use AllOrigins proxy to bypass CORS for both GitHub and Drive
+        // Show the user what we are trying to fetch
+        document.getElementById('debug-url').innerText = "Attempting to fetch: " + sourceUrl;
+
         const finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`;
 
         try {
             const pdf = await pdfjsLib.getDocument(finalUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
-            // 1. Get dimensions from first page for the ratio
             const firstPage = await pdf.getPage(1);
             const tempViewport = firstPage.getViewport({ scale: 1 });
             const ratio = tempViewport.width / tempViewport.height;
 
-            // 2. Anti-Stretch Calculation (Natural Aspect Ratio)
             let viewH = window.innerHeight * 0.95;
             let viewW = viewH * ratio;
 
@@ -124,17 +94,13 @@
                 viewH = viewW / ratio;
             }
 
-            // 3. Render all pages to canvases
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const renderViewport = page.getPageViewport({ scale: 2 }); 
                 const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                
                 canvas.height = renderViewport.height;
                 canvas.width = renderViewport.width;
-
-                await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: renderViewport }).promise;
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
@@ -145,11 +111,10 @@
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
 
-            // 4. Flipbook initialization with "Fixed" size to prevent stretching
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: Math.round(viewW),
                 height: Math.round(viewH),
-                size: "fixed", // CRITICAL: This stops the stretching
+                size: "fixed", 
                 minWidth: 300,
                 maxWidth: 2000,
                 minHeight: 400,
@@ -159,8 +124,6 @@
                 usePortrait: false,
                 startPage: 0,
                 flippingTime: 1000,
-                mobileScrollSupport: false,
-                clickEventForward: false,
                 useMouseEvents: true
             });
 
@@ -170,16 +133,14 @@
             document.getElementById('nextBtn').onclick = () => pageFlip.flipNext();
 
         } catch (err) {
-            console.error("PDF.js Error:", err);
-            document.getElementById('loader').innerHTML = "Error loading document from source.";
+            console.error(err);
+            document.getElementById('status-text').innerHTML = "Error loading document.";
+            document.getElementById('status-text').style.color = "red";
         }
     }
 
     init();
-
-    window.addEventListener('resize', () => {
-        location.reload(); 
-    });
+    window.addEventListener('resize', () => location.reload());
 </script>
 </body>
 </html>
