@@ -86,43 +86,45 @@
 
     const urlParams = new URLSearchParams(window.location.search);
     
-    // DYNAMIC PARAMETERS: No more hardcoding.
+    // Check for either 'pdf' (GitHub filename) or 'id' (Google Drive)
+    const githubFile = urlParams.get('pdf');
     const driveId = urlParams.get('id');
-    const githubFileName = urlParams.get('pdf');
 
     async function init() {
-        let fetchUrl = '';
+        let sourceUrl = '';
 
-        // 1. Determine Source (GitHub Raw vs Google Drive)
-        if (githubFileName) {
-            const rawGithubPath = 'https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/' + githubFileName;
-            fetchUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(rawGithubPath);
+        if (githubFile) {
+            // Build the URL for GitHub Raw
+            sourceUrl = `https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/${githubFile}`;
         } else if (driveId) {
-            fetchUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
+            sourceUrl = `https://drive.google.com/uc?export=download&id=${driveId}`;
         } else {
-            document.getElementById('loader').innerHTML = "No PDF source provided.";
+            document.getElementById('loader').innerHTML = "Error: No PDF source found in URL.";
             return;
         }
 
+        // Use AllOrigins proxy to bypass CORS for both GitHub and Drive
+        const finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`;
+
         try {
-            const pdf = await pdfjsLib.getDocument(fetchUrl).promise;
+            const pdf = await pdfjsLib.getDocument(finalUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
-            // 2. Anti-Stretch Dimension Calculation
+            // 1. Get dimensions from first page for the ratio
             const firstPage = await pdf.getPage(1);
             const tempViewport = firstPage.getViewport({ scale: 1 });
             const ratio = tempViewport.width / tempViewport.height;
 
-            let containerH = window.innerHeight * 0.95;
-            let containerW = containerH * ratio;
+            // 2. Anti-Stretch Calculation (Natural Aspect Ratio)
+            let viewH = window.innerHeight * 0.95;
+            let viewW = viewH * ratio;
 
-            // Ensure it fits the screen width for 2-page view
-            if (containerW > window.innerWidth * 0.45) {
-                containerW = window.innerWidth * 0.45;
-                containerH = containerW / ratio;
+            if (viewW > window.innerWidth * 0.45) {
+                viewW = window.innerWidth * 0.45;
+                viewH = viewW / ratio;
             }
 
-            // 3. Render Pages
+            // 3. Render all pages to canvases
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const renderViewport = page.getPageViewport({ scale: 2 }); 
@@ -143,11 +145,11 @@
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
 
-            // 4. PageFlip Config (Fixed Size = No Stretching)
+            // 4. Flipbook initialization with "Fixed" size to prevent stretching
             const pageFlip = new St.PageFlip(bookDiv, {
-                width: Math.round(containerW),
-                height: Math.round(containerH),
-                size: "fixed", 
+                width: Math.round(viewW),
+                height: Math.round(viewH),
+                size: "fixed", // CRITICAL: This stops the stretching
                 minWidth: 300,
                 maxWidth: 2000,
                 minHeight: 400,
@@ -168,8 +170,8 @@
             document.getElementById('nextBtn').onclick = () => pageFlip.flipNext();
 
         } catch (err) {
-            console.error(err);
-            document.getElementById('loader').innerHTML = "Error loading document. Please check the file path.";
+            console.error("PDF.js Error:", err);
+            document.getElementById('loader').innerHTML = "Error loading document from source.";
         }
     }
 
