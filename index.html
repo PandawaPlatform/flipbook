@@ -3,21 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pandawa Reader Pro</title>
+    <title>Pandawa Pro Reader</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
     <style>
         :root {
             --arrow-bg: rgba(255, 255, 255, 0.1);
-            --arrow-hover: rgba(255, 255, 255, 0.25);
+            --arrow-hover: rgba(255, 255, 255, 0.3);
         }
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
-            overflow: hidden; background: #121212; 
+            overflow: hidden; background: #0f0f0f; /* Darker, more premium */
             font-family: sans-serif;
         }
         
-        /* Centered Viewport */
         #viewport {
             display: flex; justify-content: center; align-items: center;
             width: 100vw; height: 100vh; position: relative;
@@ -25,9 +24,10 @@
 
         /* The Book Container */
         #my-book {
-            box-shadow: 0 0 60px rgba(0,0,0,0.6);
+            box-shadow: 0 0 100px rgba(0,0,0,0.8);
             background: #fff;
-            visibility: hidden; /* Hide until fully rendered to prevent jumping */
+            visibility: hidden;
+            transition: opacity 0.5s ease;
         }
 
         .page { background: white; overflow: hidden; }
@@ -37,29 +37,30 @@
             image-rendering: -webkit-optimize-contrast;
         }
 
-        /* SaaS Style Navigation Arrows */
+        /* SaaS Style Navigation Arrows - Placed at the very edges to save space */
         .nav-btn {
             position: absolute; top: 50%; transform: translateY(-50%);
             background: var(--arrow-bg); border: none; color: white;
-            width: 65px; height: 65px; border-radius: 50%;
+            width: 50px; height: 80px; /* Taller arrows */
+            border-radius: 8px;
             cursor: pointer; z-index: 1000; display: flex;
             align-items: center; justify-content: center;
-            transition: all 0.3s ease; backdrop-filter: blur(5px);
-            font-size: 26px; user-select: none;
+            transition: all 0.2s ease; backdrop-filter: blur(10px);
+            font-size: 24px; user-select: none;
         }
-        .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
-        .btn-prev { left: 25px; }
-        .btn-next { right: 25px; }
+        .nav-btn:hover { background: var(--arrow-hover); width: 60px; }
+        .btn-prev { left: 10px; }
+        .btn-next { right: 10px; }
 
         #loader { 
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: white; text-align: center; font-size: 14px; letter-spacing: 1px;
+            color: white; text-align: center; font-size: 16px;
         }
     </style>
 </head>
 <body>
 
-<div id="loader">PREPARING HIGH-RES PAGES...<br><span id="load-val">0%</span></div>
+<div id="loader">BUILDING BOOK...<br><span id="load-val">0%</span></div>
 
 <div id="viewport">
     <button class="nav-btn btn-prev" id="prevBtn">❮</button>
@@ -68,10 +69,7 @@
 </div>
 
 <script>
-    // --- STEP 1: PASTE YOUR PDF LINK HERE ---
-    // If it's a GitHub link, the code will automatically convert it to a "Raw" link for you.
     const PDF_SOURCE = "PASTE_YOUR_GITHUB_PDF_LINK_HERE"; 
-    // ----------------------------------------
 
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -79,15 +77,11 @@
     async function init() {
         const urlParams = new URLSearchParams(window.location.search);
         let inputUrl = urlParams.get('pdf') || urlParams.get('id') || PDF_SOURCE;
-        
         let finalUrl = inputUrl;
 
-        // Auto-fix GitHub links to RAW format so they actually load
         if (finalUrl.includes("github.com") && !finalUrl.includes("raw.githubusercontent.com")) {
             finalUrl = finalUrl.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
-        } 
-        // If it looks like a Google Drive ID, use the proxy
-        else if (!finalUrl.includes("/") && finalUrl.length > 15) {
+        } else if (!finalUrl.includes("/") && finalUrl.length > 15) {
             finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${finalUrl}`);
         }
 
@@ -96,28 +90,31 @@
             const bookDiv = document.getElementById('my-book');
             
             const firstPage = await pdf.getPage(1);
-            const viewport = firstPage.getViewport({ scale: 1 });
-            const ratio = viewport.width / viewport.height;
+            const vp = firstPage.getViewport({ scale: 1 });
+            const ratio = vp.width / vp.height;
 
-            // SIZE FIX: Fit 90% of screen height, but leave room for arrows
-            let viewH = window.innerHeight * 0.90;
+            // --- THE SIZE FIX ---
+            // We use 95% of the screen height as our primary limit
+            let viewH = window.innerHeight * 0.95;
             let viewW = viewH * ratio;
 
-            if (viewW * 2 > window.innerWidth * 0.85) {
-                viewW = (window.innerWidth * 0.85) / 2;
+            // If the two-page spread is wider than 90% of the screen, we shrink based on width instead
+            if (viewW * 2 > window.innerWidth * 0.90) {
+                viewW = (window.innerWidth * 0.90) / 2;
                 viewH = viewW / ratio;
             }
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const renderViewport = page.getViewport({ scale: 2 }); // Scale 2 is the sweet spot for GitHub speed + sharpness
+                // Render at high resolution (Scale 2.5) for text clarity
+                const renderVP = page.getViewport({ scale: 2.5 }); 
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 
-                canvas.height = renderViewport.height;
-                canvas.width = renderViewport.width;
+                canvas.height = renderVP.height;
+                canvas.width = renderVP.width;
 
-                await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+                await page.render({ canvasContext: context, viewport: renderVP }).promise;
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
@@ -132,14 +129,17 @@
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: Math.round(viewW),
                 height: Math.round(viewH),
-                size: "fixed", // This STOPS the jumpy "top-left" bug
+                size: "fixed",
+                minWidth: 200,
+                maxWidth: 2000,
+                minHeight: 200,
+                maxHeight: 2000,
                 drawShadow: true,
-                showCover: true,
+                showCover: true, // Page 1 is cover (on the right)
                 usePortrait: false,
-                flippingTime: 800,
-                mobileScrollSupport: false,
-                clickEventForward: false,
-                useMouseEvents: true
+                flippingTime: 700,
+                useMouseEvents: true,
+                clickEventForward: false
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
@@ -149,17 +149,16 @@
 
         } catch (err) {
             console.error(err);
-            document.getElementById('loader').innerHTML = "ERROR: LINK BLOCKED OR INVALID.<br>Check console for details.";
+            document.getElementById('loader').innerHTML = "FAILED TO LOAD PDF";
         }
     }
 
     init();
 
-    // Prevent the jump-on-resize bug
     window.addEventListener('resize', () => {
         let timeout;
         clearTimeout(timeout);
-        timeout = setTimeout(() => location.reload(), 500);
+        timeout = setTimeout(() => location.reload(), 400);
     });
 </script>
 </body>
