@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlipOS 2026 | Reader</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; color: white; font-family: sans-serif; }
+        #canvas-container { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; }
+        .page { background: white; width: 100%; height: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; }
+    </style>
+</head>
+<body>
+
+<div id="loader">Loading Flipbook...</div>
+<div id="canvas-container">
+    <div id="my-book"></div>
+</div>
+
+<script>
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // 1. Get Google Drive ID from the URL (?id=xxxxxx)
+    const urlParams = new URLSearchParams(window.location.search);
+    const driveId = urlParams.get('id');
+
+    if (!driveId) {
+        document.getElementById('loader').innerText = "Please add a Google Drive ID to the URL.";
+    } else {
+        initFlipbook(driveId);
+    }
+
+    async function initFlipbook(id) {
+        try {
+            // Direct Link + CORS Proxy (Essential for 2026 security)
+            const driveUrl = `https://drive.google.com/uc?export=download&id=${id}`;
+            const finalUrl = 'https://corsproxy.io/?' + encodeURIComponent(driveUrl);
+
+            const pdf = await pdfjsLib.getDocument(finalUrl).promise;
+            const bookDiv = document.getElementById('my-book');
+            
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: 1.5 });
+                const canvas = document.createElement('canvas');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'page';
+                pageDiv.appendChild(canvas);
+                bookDiv.appendChild(pageDiv);
+            }
+
+            document.getElementById('loader').style.display = 'none';
+
+            const pageFlip = new St.PageFlip(bookDiv, {
+                width: 550, height: 800, size: "stretch",
+                showCover: true, usePortrait: true, mobileScrollSupport: true
+            });
+
+            pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+        } catch (err) {
+            document.getElementById('loader').innerText = "Error: Check your Google Drive Share settings.";
+            console.error(err);
+        }
+    }
+</script>
+</body>
+</html>
