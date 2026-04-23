@@ -15,16 +15,15 @@
             opacity: 0; transition: opacity 0.5s ease; 
         }
         
-        /* The container for the flipbook */
         #my-book { margin: auto; }
 
-        .page { background: white; width: 100%; height: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .page { background: white; width: 100%; height: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.5); overflow: hidden; }
         
-        /* CSS FIX: Prevents text blur by using sharp scaling math */
+        /* ADJUSTMENT: Remove 100% width/height to stop stretching. Use CSS scaling for sharpness. */
         canvas { 
-            width: 100% !important; 
-            height: 100% !important; 
             display: block;
+            width: 100%;
+            height: 100%;
             image-rendering: -webkit-optimize-contrast;
             image-rendering: crisp-edges;
         }
@@ -38,7 +37,7 @@
 
 <div id="loader">
     <div class="spinner"></div>
-    <div id="load-text">Calibrating Dimensions...</div>
+    <div id="load-text">Rendering HD Text...</div>
 </div>
 
 <div id="canvas-container"><div id="my-book"></div></div>
@@ -68,9 +67,6 @@
             finalUrl = encodeURI(finalUrl);
         } else if (driveId) {
             finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
-        } else {
-            document.getElementById('load-text').innerText = "Error: No PDF source specified.";
-            return;
         }
 
         try {
@@ -79,17 +75,26 @@
             const bookDiv = document.getElementById('my-book');
             bookDiv.innerHTML = ''; 
 
-            // STEP 1: Get actual PDF dimensions from the first page
             const firstPage = await pdf.getPage(1);
-            const originalViewport = firstPage.getViewport({ scale: 1 });
+            const viewportOrig = firstPage.getViewport({ scale: 1 });
             
-            // These are the "Natural" dimensions of your PDF
-            const pdfWidth = originalViewport.width;
-            const pdfHeight = originalViewport.height;
+            // ADJUSTMENT: Calculate the display size based on screen
+            const screenW = window.innerWidth * 0.9;
+            const screenH = window.innerHeight * 0.9;
+            const ratio = viewportOrig.width / viewportOrig.height;
             
-            // STEP 2: Calculate the best rendering scale for sharpness
-            // We use a high scale for the internal canvas, but fit it to the UI
-            const renderScale = 3.0; 
+            // Fixed base dimensions for the library
+            let displayH = screenH;
+            let displayW = displayH * ratio;
+
+            if (displayW * 2 > screenW) {
+                displayW = screenW / 2;
+                displayH = displayW / ratio;
+            }
+
+            // High-Res Render Scale (DPR Aware)
+            const dpr = window.devicePixelRatio || 1;
+            const renderScale = 2.5 * dpr; 
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
@@ -103,7 +108,7 @@
                 await page.render({ 
                     canvasContext: context, 
                     viewport: viewport,
-                    intent: 'print' 
+                    intent: 'print'
                 }).promise;
 
                 const pageDiv = document.createElement('div');
@@ -115,26 +120,21 @@
             document.getElementById('loader').style.display = 'none';
             document.getElementById('canvas-container').style.opacity = '1';
             
-            // STEP 3: Initialize with DYNAMIC dimensions
+            // ADJUSTMENT: size: "fixed" with calculated dimensions stops the stretching
             const pageFlip = new St.PageFlip(bookDiv, {
-                width: pdfWidth, 
-                height: pdfHeight,
-                size: "stretch", // Stretch now works correctly because the ratio is exact
-                minWidth: 300,
-                maxWidth: 1000,
-                minHeight: 400,
-                maxHeight: 1400,
+                width: Math.round(displayW), 
+                height: Math.round(displayH),
+                size: "fixed", 
                 showCover: true, 
-                usePortrait: true, 
+                usePortrait: false, // Force spread mode for better clarity
                 mobileScrollSupport: true,
                 maxShadowOpacity: 0.1
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-            log("Flipbook loaded with correct Aspect Ratio!");
             
         } catch (err) {
-            document.getElementById('load-text').innerHTML = `<span style="color:red">Failed to load PDF.</span><br><small>${err.message}</small>`;
+            document.getElementById('load-text').innerHTML = `<span style="color:red">Error: ${err.message}</span>`;
         }
     }
     init();
