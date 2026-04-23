@@ -85,34 +85,44 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const urlParams = new URLSearchParams(window.location.search);
-    // Use 'pdf' parameter from your PHP: ?pdf=Pengantar Awal.pdf
-    const pdfName = urlParams.get('pdf') || 'Pengantar Awal.pdf'; 
+    
+    // DYNAMIC PARAMETERS: No more hardcoding.
+    const driveId = urlParams.get('id');
+    const githubFileName = urlParams.get('pdf');
 
     async function init() {
-        // Construct the RAW GitHub URL
-        const githubRawBase = 'https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/';
-        const pdfUrl = githubRawBase + encodeURIComponent(pdfName);
-        
-        // Use proxy to avoid CORS issues with GitHub raw content
-        const finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(pdfUrl);
+        let fetchUrl = '';
+
+        // 1. Determine Source (GitHub Raw vs Google Drive)
+        if (githubFileName) {
+            const rawGithubPath = 'https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/' + githubFileName;
+            fetchUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(rawGithubPath);
+        } else if (driveId) {
+            fetchUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
+        } else {
+            document.getElementById('loader').innerHTML = "No PDF source provided.";
+            return;
+        }
 
         try {
-            const pdf = await pdfjsLib.getDocument(finalUrl).promise;
+            const pdf = await pdfjsLib.getDocument(fetchUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
+            // 2. Anti-Stretch Dimension Calculation
             const firstPage = await pdf.getPage(1);
             const tempViewport = firstPage.getViewport({ scale: 1 });
             const ratio = tempViewport.width / tempViewport.height;
 
-            // Calculate dimensions based on PDF ratio to prevent stretching
             let containerH = window.innerHeight * 0.95;
             let containerW = containerH * ratio;
 
+            // Ensure it fits the screen width for 2-page view
             if (containerW > window.innerWidth * 0.45) {
                 containerW = window.innerWidth * 0.45;
                 containerH = containerW / ratio;
             }
 
+            // 3. Render Pages
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const renderViewport = page.getPageViewport({ scale: 2 }); 
@@ -133,10 +143,11 @@
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
 
+            // 4. PageFlip Config (Fixed Size = No Stretching)
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: Math.round(containerW),
                 height: Math.round(containerH),
-                size: "fixed", // STOP THE STRETCHING
+                size: "fixed", 
                 minWidth: 300,
                 maxWidth: 2000,
                 minHeight: 400,
@@ -153,12 +164,12 @@
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
-            document.getElementById('prevBtn').addEventListener('click', () => pageFlip.flipPrev());
-            document.getElementById('nextBtn').addEventListener('click', () => pageFlip.flipNext());
+            document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
+            document.getElementById('nextBtn').onclick = () => pageFlip.flipNext();
 
         } catch (err) {
             console.error(err);
-            document.getElementById('loader').innerHTML = "Error loading PDF from GitHub.";
+            document.getElementById('loader').innerHTML = "Error loading document. Please check the file path.";
         }
     }
 
