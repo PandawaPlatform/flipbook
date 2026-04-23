@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pandawa Flipbook Pro</title>
+    <title>Pandawa Reader Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
     <style>
         :root {
-            --arrow-bg: rgba(255, 255, 255, 0.15);
-            --arrow-hover: rgba(255, 255, 255, 0.3);
+            --arrow-bg: rgba(255, 255, 255, 0.1);
+            --arrow-hover: rgba(255, 255, 255, 0.25);
         }
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
@@ -17,20 +17,17 @@
             font-family: sans-serif;
         }
         
+        /* Centered Viewport */
         #viewport {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100vw;
-            height: 100vh;
-            position: relative;
+            display: flex; justify-content: center; align-items: center;
+            width: 100vw; height: 100vh; position: relative;
         }
 
+        /* The Book Container */
         #my-book {
-            box-shadow: 0 0 100px rgba(0,0,0,0.7);
+            box-shadow: 0 0 60px rgba(0,0,0,0.6);
             background: #fff;
-            visibility: hidden;
-            z-index: 5;
+            visibility: hidden; /* Hide until fully rendered to prevent jumping */
         }
 
         .page { background: white; overflow: hidden; }
@@ -42,39 +39,27 @@
 
         /* SaaS Style Navigation Arrows */
         .nav-btn {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            background: var(--arrow-bg);
-            border: none;
-            color: white;
-            width: 65px;
-            height: 65px;
-            border-radius: 50%;
-            cursor: pointer;
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-            font-size: 28px;
-            user-select: none;
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: var(--arrow-bg); border: none; color: white;
+            width: 65px; height: 65px; border-radius: 50%;
+            cursor: pointer; z-index: 1000; display: flex;
+            align-items: center; justify-content: center;
+            transition: all 0.3s ease; backdrop-filter: blur(5px);
+            font-size: 26px; user-select: none;
         }
         .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
-        .btn-prev { left: 30px; }
-        .btn-next { right: 30px; }
+        .btn-prev { left: 25px; }
+        .btn-next { right: 25px; }
 
         #loader { 
-            position: fixed; top: 50%; left: 50%; 
-            transform: translate(-50%, -50%); color: white; 
-            font-weight: bold; text-align: center;
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; text-align: center; font-size: 14px; letter-spacing: 1px;
         }
     </style>
 </head>
 <body>
 
-<div id="loader">RENDERING PAGES...<br><small id="prog">0%</small></div>
+<div id="loader">PREPARING HIGH-RES PAGES...<br><span id="load-val">0%</span></div>
 
 <div id="viewport">
     <button class="nav-btn btn-prev" id="prevBtn">❮</button>
@@ -83,23 +68,27 @@
 </div>
 
 <script>
-    // --- CONFIGURATION ---
-    // 1. If using GitHub: Put the RAW URL here
-    // 2. If using Drive: Put the ID here
-    const DEFAULT_SOURCE = "1YAn3Oclw9G6_S-pX1Z9_H5U9n_vL9O7v"; 
-    // ---------------------
+    // --- STEP 1: PASTE YOUR PDF LINK HERE ---
+    // If it's a GitHub link, the code will automatically convert it to a "Raw" link for you.
+    const PDF_SOURCE = "PASTE_YOUR_GITHUB_PDF_LINK_HERE"; 
+    // ----------------------------------------
 
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     async function init() {
         const urlParams = new URLSearchParams(window.location.search);
-        let source = urlParams.get('id') || urlParams.get('pdf') || DEFAULT_SOURCE;
+        let inputUrl = urlParams.get('pdf') || urlParams.get('id') || PDF_SOURCE;
         
-        let finalUrl = source;
-        // If it's just a Drive ID (no slash/dot), format it
-        if (!source.includes('/') && !source.includes('.')) {
-            finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${source}`);
+        let finalUrl = inputUrl;
+
+        // Auto-fix GitHub links to RAW format so they actually load
+        if (finalUrl.includes("github.com") && !finalUrl.includes("raw.githubusercontent.com")) {
+            finalUrl = finalUrl.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
+        } 
+        // If it looks like a Google Drive ID, use the proxy
+        else if (!finalUrl.includes("/") && finalUrl.length > 15) {
+            finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${finalUrl}`);
         }
 
         try {
@@ -107,27 +96,23 @@
             const bookDiv = document.getElementById('my-book');
             
             const firstPage = await pdf.getPage(1);
-            const originalViewport = firstPage.getViewport({ scale: 1 });
-            const ratio = originalViewport.width / originalViewport.height;
+            const viewport = firstPage.getViewport({ scale: 1 });
+            const ratio = viewport.width / viewport.height;
 
-            // SAFE ZONE CALCULATION: Fills as much of the screen as possible
-            let viewH = window.innerHeight * 0.90; 
+            // SIZE FIX: Fit 90% of screen height, but leave room for arrows
+            let viewH = window.innerHeight * 0.90;
             let viewW = viewH * ratio;
 
-            // Ensure double-page spread doesn't hit the side arrows
-            if (viewW * 2 > window.innerWidth * 0.80) {
-                viewW = (window.innerWidth * 0.80) / 2;
+            if (viewW * 2 > window.innerWidth * 0.85) {
+                viewW = (window.innerWidth * 0.85) / 2;
                 viewH = viewW / ratio;
             }
 
             for (let i = 1; i <= pdf.numPages; i++) {
-                document.getElementById('prog').innerText = Math.round((i/pdf.numPages)*100) + "%";
                 const page = await pdf.getPage(i);
-                
-                // Scale 3 = Ultra HD Readability
-                const renderViewport = page.getViewport({ scale: 3 }); 
+                const renderViewport = page.getViewport({ scale: 2 }); // Scale 2 is the sweet spot for GitHub speed + sharpness
                 const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d', { alpha: false });
+                const context = canvas.getContext('2d');
                 
                 canvas.height = renderViewport.height;
                 canvas.width = renderViewport.width;
@@ -138,6 +123,7 @@
                 pageDiv.className = 'page';
                 pageDiv.appendChild(canvas);
                 bookDiv.appendChild(pageDiv);
+                document.getElementById('load-val').innerText = Math.round((i/pdf.numPages)*100) + "%";
             }
 
             document.getElementById('loader').style.display = 'none';
@@ -146,13 +132,14 @@
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: Math.round(viewW),
                 height: Math.round(viewH),
-                size: "fixed", 
+                size: "fixed", // This STOPS the jumpy "top-left" bug
                 drawShadow: true,
                 showCover: true,
                 usePortrait: false,
                 flippingTime: 800,
-                useMouseEvents: true,
-                clickEventForward: false
+                mobileScrollSupport: false,
+                clickEventForward: false,
+                useMouseEvents: true
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
@@ -162,17 +149,17 @@
 
         } catch (err) {
             console.error(err);
-            document.getElementById('loader').innerHTML = "FAILED TO LOAD PDF<br>CHECK SOURCE URL";
+            document.getElementById('loader').innerHTML = "ERROR: LINK BLOCKED OR INVALID.<br>Check console for details.";
         }
     }
 
     init();
 
-    // Fixes the resize/jump issue
+    // Prevent the jump-on-resize bug
     window.addEventListener('resize', () => {
-        let timer;
-        clearTimeout(timer);
-        timer = setTimeout(() => location.reload(), 400);
+        let timeout;
+        clearTimeout(timeout);
+        timeout = setTimeout(() => location.reload(), 500);
     });
 </script>
 </body>
