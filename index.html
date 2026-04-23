@@ -19,7 +19,7 @@
 <div id="canvas-container"><div id="my-book"></div></div>
 
 <script>
-    // 1. FIXED: Define the log function so the app doesn't crash
+    // 1. FIXED: Define log function immediately
     const log = (msg) => console.log(`[Flipbook Log]: ${msg}`);
 
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
@@ -33,19 +33,28 @@
         let finalUrl = "";
 
         if (fileUrl) {
-            log("Processing PDF from GitHub...");
+            log("Processing PDF source...");
             
-            // 2. FIXED: Convert standard GitHub links to RAW links automatically
-            // This turns "github.com/.../blob/..." into "raw.githubusercontent.com/..."
-            let cleanUrl = fileUrl;
-            if (cleanUrl.includes("github.com") && cleanUrl.includes("/blob/")) {
-                cleanUrl = cleanUrl.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
+            // 2. CRITICAL FIX: Decode first to remove existing %20 
+            // This prevents "double encoding" (making it %2520)
+            let cleanPath = decodeURIComponent(fileUrl);
+            
+            if (cleanPath.includes("github.com") && cleanPath.includes("/blob/")) {
+                // Convert GitHub website link to direct file link
+                finalUrl = cleanPath.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
+            } else if (cleanPath.startsWith("http")) {
+                finalUrl = cleanPath;
+            } else {
+                // If it's just a filename, find it in the same folder as this index.html
+                const currentDir = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+                finalUrl = currentDir + "/" + cleanPath;
             }
             
-            // 3. FIXED: Handle spaces in filenames (e.g., "Pengantar Awal.pdf")
-            finalUrl = encodeURI(cleanUrl); 
+            // Re-encode properly for the browser
+            finalUrl = encodeURI(finalUrl);
+
         } else if (driveId) {
-            log("Processing PDF from Google Drive...");
+            log("Processing Google Drive ID...");
             finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
         } else {
             document.getElementById('load-text').innerText = "Error: No PDF source specified.";
@@ -53,18 +62,21 @@
         }
 
         try {
-            log(`Attempting to fetch: ${finalUrl}`);
+            log(`Fetching from: ${finalUrl}`);
             const loadingTask = pdfjsLib.getDocument(finalUrl);
             const pdf = await loadingTask.promise;
             const bookDiv = document.getElementById('my-book');
+            bookDiv.innerHTML = ''; // Clear container
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const viewport = page.getViewport({ scale: 1.5 });
                 const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
@@ -73,16 +85,18 @@
             }
 
             document.getElementById('loader').style.display = 'none';
+            
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: 550, height: 800, size: "stretch",
                 showCover: true, usePortrait: true, mobileScrollSupport: true
             });
+
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-            log("Flipbook loaded successfully!");
+            log("Flipbook loaded!");
             
         } catch (err) {
             log(`CRITICAL ERROR: ${err.message}`);
-            document.getElementById('load-text').innerHTML = `<span style="color:red">Failed to load flipbook.</span><br><small>${err.message}</small>`;
+            document.getElementById('load-text').innerHTML = `<span style="color:red">Failed to load PDF.</span><br><small>${err.message}</small>`;
         }
     }
     init();
