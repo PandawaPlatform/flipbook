@@ -13,7 +13,7 @@
         }
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
-            overflow: hidden; background: radial-gradient(circle, #2c2c2c 0%, #121212 100%); 
+            overflow: hidden; background: #121212; 
             font-family: sans-serif;
         }
         
@@ -27,7 +27,7 @@
         }
 
         #my-book {
-            box-shadow: 0 30px 60px rgba(0,0,0,0.7);
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
             background: #fff;
             visibility: hidden;
         }
@@ -44,7 +44,7 @@
             top: 50%;
             transform: translateY(-50%);
             background: var(--arrow-bg);
-            border: 1px solid rgba(255,255,255,0.1);
+            border: none;
             color: white;
             width: 60px;
             height: 60px;
@@ -55,7 +55,7 @@
             align-items: center;
             justify-content: center;
             transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(5px);
             font-size: 24px;
         }
         .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
@@ -85,38 +85,37 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const urlParams = new URLSearchParams(window.location.search);
-    const driveId = urlParams.get('id') || '1YAn3Oclw9G6_S-pX1Z9_H5U9n_vL9O7v';
+    // Use 'pdf' parameter from your PHP: ?pdf=Pengantar Awal.pdf
+    const pdfName = urlParams.get('pdf') || 'Pengantar Awal.pdf'; 
 
     async function init() {
-        const finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
+        // Construct the RAW GitHub URL
+        const githubRawBase = 'https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/';
+        const pdfUrl = githubRawBase + encodeURIComponent(pdfName);
+        
+        // Use proxy to avoid CORS issues with GitHub raw content
+        const finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(pdfUrl);
 
         try {
             const pdf = await pdfjsLib.getDocument(finalUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
-            // 1. Better Aspect Ratio Calculation (Anti-Stretch)
             const firstPage = await pdf.getPage(1);
-            const pdfViewport = firstPage.getViewport({ scale: 1 });
-            const pdfRatio = pdfViewport.width / pdfViewport.height;
+            const tempViewport = firstPage.getViewport({ scale: 1 });
+            const ratio = tempViewport.width / tempViewport.height;
 
-            // Calculate space available
-            let containerW = window.innerWidth * 0.9;
-            let containerH = window.innerHeight * 0.9;
-            let viewW, viewH;
+            // Calculate dimensions based on PDF ratio to prevent stretching
+            let containerH = window.innerHeight * 0.95;
+            let containerW = containerH * ratio;
 
-            // Logic to fit PDF ratio into screen without stretching
-            if (containerW / containerH > pdfRatio * 2) {
-                viewH = containerH;
-                viewW = viewH * pdfRatio;
-            } else {
-                viewW = containerW / 2;
-                viewH = viewW / pdfRatio;
+            if (containerW > window.innerWidth * 0.45) {
+                containerW = window.innerWidth * 0.45;
+                containerH = containerW / ratio;
             }
 
-            // 2. Render High-Quality Pages
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const renderViewport = page.getViewport({ scale: 2 }); // Keep High DPI
+                const renderViewport = page.getPageViewport({ scale: 2 }); 
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 
@@ -134,18 +133,17 @@
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
 
-            // 3. Fixed PageFlip Configuration (FlowPaper Style)
             const pageFlip = new St.PageFlip(bookDiv, {
-                width: Math.round(viewW),
-                height: Math.round(viewH),
-                size: "fixed", // CRITICAL: Changed from 'stretch' to 'fixed' to stop stretching
+                width: Math.round(containerW),
+                height: Math.round(containerH),
+                size: "fixed", // STOP THE STRETCHING
                 minWidth: 300,
                 maxWidth: 2000,
                 minHeight: 400,
                 maxHeight: 2000,
                 drawShadow: true,
                 showCover: true,
-                usePortrait: window.innerWidth < 768, // Auto-switch for mobile
+                usePortrait: false,
                 startPage: 0,
                 flippingTime: 1000,
                 mobileScrollSupport: false,
@@ -155,21 +153,12 @@
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
-            // 4. Arrow Navigation Logic
-            document.getElementById('prevBtn').addEventListener('click', () => {
-                pageFlip.flipPrev();
-            });
-            document.getElementById('nextBtn').addEventListener('click', () => {
-                pageFlip.flipNext();
-            });
-
-            pageFlip.on('flip', (e) => {
-                console.log("Current page: " + e.data);
-            });
+            document.getElementById('prevBtn').addEventListener('click', () => pageFlip.flipPrev());
+            document.getElementById('nextBtn').addEventListener('click', () => pageFlip.flipNext());
 
         } catch (err) {
             console.error(err);
-            document.getElementById('loader').innerHTML = "Error loading PDF. Please check Drive permissions.";
+            document.getElementById('loader').innerHTML = "Error loading PDF from GitHub.";
         }
     }
 
