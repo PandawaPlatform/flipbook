@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pandawa Reader</title>
+    <title>Pandawa Flipbook Reader</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
     <style>
@@ -15,32 +15,45 @@
 </head>
 <body>
 
-<div id="loader"><div id="load-text">Opening Document...</div></div>
+<div id="loader"><div id="load-text">Initializing Pandawa Reader...</div></div>
 <div id="canvas-container"><div id="my-book"></div></div>
 
 <script>
+    // 1. FIXED: Define the log function so the app doesn't crash
+    const log = (msg) => console.log(`[Flipbook Log]: ${msg}`);
+
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const urlParams = new URLSearchParams(window.location.search);
-    const driveId = urlParams.get('id'); // For Google Drive
-    const fileUrl = urlParams.get('pdf'); // For GitHub Files
+    const driveId = urlParams.get('id'); 
+    const fileUrl = urlParams.get('pdf'); 
 
-async function init() {
+    async function init() {
         let finalUrl = "";
 
         if (fileUrl) {
-            // FIX: We use encodeURI to handle spaces like "Pengantar Awal.pdf"
-            finalUrl = encodeURI(fileUrl); 
+            log("Processing PDF from GitHub...");
+            
+            // 2. FIXED: Convert standard GitHub links to RAW links automatically
+            // This turns "github.com/.../blob/..." into "raw.githubusercontent.com/..."
+            let cleanUrl = fileUrl;
+            if (cleanUrl.includes("github.com") && cleanUrl.includes("/blob/")) {
+                cleanUrl = cleanUrl.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
+            }
+            
+            // 3. FIXED: Handle spaces in filenames (e.g., "Pengantar Awal.pdf")
+            finalUrl = encodeURI(cleanUrl); 
         } else if (driveId) {
+            log("Processing PDF from Google Drive...");
             finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
         } else {
-            document.getElementById('load-text').innerText = "No PDF specified.";
+            document.getElementById('load-text').innerText = "Error: No PDF source specified.";
             return;
         }
 
         try {
-            log(`Fetching: ${finalUrl}`);
+            log(`Attempting to fetch: ${finalUrl}`);
             const loadingTask = pdfjsLib.getDocument(finalUrl);
             const pdf = await loadingTask.promise;
             const bookDiv = document.getElementById('my-book');
@@ -65,8 +78,11 @@ async function init() {
                 showCover: true, usePortrait: true, mobileScrollSupport: true
             });
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+            log("Flipbook loaded successfully!");
+            
         } catch (err) {
-            document.getElementById('load-text').innerHTML = `<span style="color:red">Failed to load.</span><br><small>${err.message}</small>`;
+            log(`CRITICAL ERROR: ${err.message}`);
+            document.getElementById('load-text').innerHTML = `<span style="color:red">Failed to load flipbook.</span><br><small>${err.message}</small>`;
         }
     }
     init();
