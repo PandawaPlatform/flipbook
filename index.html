@@ -21,55 +21,95 @@
 </div>
 
 <script>
-    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+   const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    // Using a more reliable worker source for 2026
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    // 1. Get Google Drive ID from the URL (?id=xxxxxx)
     const urlParams = new URLSearchParams(window.location.search);
     const driveId = urlParams.get('id');
 
     if (!driveId) {
-        document.getElementById('loader').innerText = "Please add a Google Drive ID to the URL.";
+        document.getElementById('loader').innerText = "Error: No Google Drive ID provided in the URL.";
     } else {
         initFlipbook(driveId);
     }
 
     async function initFlipbook(id) {
-        try {
-            // Direct Link + CORS Proxy (Essential for 2026 security)
-            const driveUrl = `https://drive.google.com/uc?export=download&id=${id}`;
-            const finalUrl = 'https://corsproxy.io/?' + encodeURIComponent(driveUrl);
+        const loader = document.getElementById('loader');
+        
+        // We will try two different proxy services in case one is down
+        const proxies = [
+            `https://api.allorigins.win/raw?url=`,
+            `https://corsproxy.io/?`
+        ];
 
-            const pdf = await pdfjsLib.getDocument(finalUrl).promise;
-            const bookDiv = document.getElementById('my-book');
+        let success = false;
+
+        for (let proxy of proxies) {
+            if (success) break;
             
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: 1.5 });
-                const canvas = document.createElement('canvas');
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+            try {
+                const driveUrl = `https://drive.google.com/uc?export=download&id=${id}`;
+                const finalUrl = proxy + encodeURIComponent(driveUrl);
+                
+                loader.innerText = `Attempting to fetch PDF (Proxy ${proxies.indexOf(proxy) + 1})...`;
 
-                const pageDiv = document.createElement('div');
-                pageDiv.className = 'page';
-                pageDiv.appendChild(canvas);
-                bookDiv.appendChild(pageDiv);
+                const loadingTask = pdfjsLib.getDocument({
+                    url: finalUrl,
+                    // These settings help bypass "Range" request errors common with Google Drive
+                    disableRange: true,
+                    disableAutoFetch: true
+                });
+
+                loadingTask.onProgress = (p) => {
+                    const percent = Math.round((p.loaded / p.total) * 100);
+                    loader.innerText = isNaN(percent) ? "Downloading..." : `Loading: ${percent}%`;
+                };
+
+                const pdf = await loadingTask.promise;
+                success = true; // If we reach here, the proxy worked!
+                
+                const bookDiv = document.getElementById('my-book');
+                bookDiv.innerHTML = ''; 
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({ scale: 1.5 });
+                    const canvas = document.createElement('canvas');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+                    const pageDiv = document.createElement('div');
+                    pageDiv.className = 'page';
+                    pageDiv.appendChild(canvas);
+                    bookDiv.appendChild(pageDiv);
+                }
+
+                loader.style.display = 'none';
+
+                const pageFlip = new St.PageFlip(bookDiv, {
+                    width: 550, height: 800, size: "stretch",
+                    showCover: true, usePortrait: true, mobileScrollSupport: true
+                });
+
+                pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+                
+            } catch (err) {
+                console.error(`Proxy ${proxy} failed:`, err);
+                // Continue to next proxy in loop
             }
-
-            document.getElementById('loader').style.display = 'none';
-
-            const pageFlip = new St.PageFlip(bookDiv, {
-                width: 550, height: 800, size: "stretch",
-                showCover: true, usePortrait: true, mobileScrollSupport: true
-            });
-
-            pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-        } catch (err) {
-            document.getElementById('loader').innerText = "Error: Check your Google Drive Share settings.";
-            console.error(err);
         }
-    }
-</script>
+
+        if (!success) {
+            loader.innerHTML = `
+                <div style="color: #ff6b6b; padding: 20px; border: 1px solid #ff6b6b; border-radius: 10px;">
+                    <strong>Connection Failed</strong><br>
+                    Google Drive is blocking the automated reader.<br><br>
+                    <small>Reason: The file might be too large (>50MB) or Google's security is blocking the request. 
+                    Try checking the console (F12) for more details.</small>
+                </div>`;
+        }
+    }</script>
 </body>
 </html>
