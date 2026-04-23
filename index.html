@@ -1,367 +1,213 @@
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
     <title>Pandawa Reader Pro</title>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
-
     <style>
-
         :root {
-
-            --arrow-bg: rgba(255, 255, 255, 0.1);
-
-            --arrow-hover: rgba(255, 255, 255, 0.25);
-
+            --arrow-bg: rgba(255, 255, 255, 0.15);
+            --arrow-hover: rgba(255, 255, 255, 0.3);
         }
-
         body, html { 
-
             margin: 0; padding: 0; width: 100%; height: 100%; 
-
-            overflow: hidden; background: #121212; 
-
-            font-family: sans-serif;
-
+            overflow: hidden; background: #1a1a1a; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-
         
-
-        /* Centered Container */
-
         #viewport {
-
             display: flex;
-
             justify-content: center;
-
             align-items: center;
-
             width: 100vw;
-
             height: 100vh;
-
             position: relative;
-
         }
-
-
 
         /* The Flipbook Wrapper */
-
         #my-book {
-
-            box-shadow: 0 0 50px rgba(0,0,0,0.5);
-
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
             background: #fff;
-
-            visibility: hidden; /* Hide until loaded to prevent jump */
-
+            opacity: 0; /* Smooth fade in */
+            transition: opacity 0.5s ease;
         }
 
-
-
-        .page { background: white; overflow: hidden; }
-
+        .page { 
+            background: white; 
+            overflow: hidden; 
+            width: 100%;
+            height: 100%;
+        }
         
-
         canvas { 
-
-            width: 100%; height: 100%; display: block;
-
-            image-rendering: -webkit-optimize-contrast;
-
+            width: 100%; 
+            height: 100%; 
+            display: block;
+            object-fit: contain; /* Prevents stretching */
         }
 
-
-
-        /* SaaS Style Navigation Arrows */
-
+        /* Navigation Arrows */
         .nav-btn {
-
             position: absolute;
-
             top: 50%;
-
             transform: translateY(-50%);
-
             background: var(--arrow-bg);
-
             border: none;
-
             color: white;
-
-            width: 60px;
-
-            height: 60px;
-
+            width: 55px;
+            height: 55px;
             border-radius: 50%;
-
             cursor: pointer;
-
-            z-index: 100;
-
+            z-index: 1000;
             display: flex;
-
             align-items: center;
-
             justify-content: center;
-
-            transition: all 0.3s ease;
-
-            backdrop-filter: blur(5px);
-
-            font-size: 24px;
-
+            transition: all 0.2s ease;
+            backdrop-filter: blur(8px);
+            font-size: 20px;
+            user-select: none;
         }
-
         .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
-
-        .btn-prev { left: 30px; }
-
-        .btn-next { right: 30px; }
-
-
+        .nav-btn:active { scale: 0.95; }
+        .btn-prev { left: 20px; }
+        .btn-next { right: 20px; }
 
         #loader { 
-
             position: fixed; top: 50%; left: 50%; 
-
             transform: translate(-50%, -50%); color: white; 
-
+            text-align: center;
         }
 
+        /* Center Fold Shadow for Realism */
+        .page.-left { border-right: 1px solid rgba(0,0,0,0.1); }
+        .page.-right { border-left: 1px solid rgba(0,0,0,0.1); }
     </style>
-
 </head>
-
 <body>
 
-
-
-<div id="loader">Loading PDF Document...</div>
-
-
-
-<div id="viewport">
-
-    <button class="nav-btn btn-prev" id="prevBtn">❮</button>
-
-    
-
-    <div id="my-book">
-
-        </div>
-
-
-
-    <button class="nav-btn btn-next" id="nextBtn">❯</button>
-
+<div id="loader">
+    <div style="margin-bottom: 10px;">Rendering High Quality Pages...</div>
+    <small id="progress">Initializing...</small>
 </div>
 
+<div id="viewport">
+    <button class="nav-btn btn-prev" id="prevBtn" title="Previous Page">❮</button>
+    
+    <div id="my-book">
+        </div>
 
+    <button class="nav-btn btn-next" id="nextBtn" title="Next Page">❯</button>
+</div>
 
 <script>
-
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
-
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-
-
     const urlParams = new URLSearchParams(window.location.search);
-
-    const driveId = urlParams.get('id') || '1YAn3Oclw9G6_S-pX1Z9_H5U9n_vL9O7v'; // Example ID if none provided
-
-
+    const driveId = urlParams.get('id'); // Pass your ID in the URL
 
     async function init() {
+        if (!driveId) {
+            document.getElementById('loader').innerHTML = "No PDF ID provided in URL.";
+            return;
+        }
 
         const finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
 
-
-
         try {
-
-            const pdf = await pdfjsLib.getDocument(finalUrl).promise;
-
+            const loadingTask = pdfjsLib.getDocument(finalUrl);
+            const pdf = await loadingTask.promise;
             const bookDiv = document.getElementById('my-book');
-
+            const progress = document.getElementById('progress');
             
-
-            // 1. Better Dimension Calculation
-
+            // 1. Precise Aspect Ratio Calculation
             const firstPage = await pdf.getPage(1);
+            const originalViewport = firstPage.getViewport({ scale: 1 });
+            const ratio = originalViewport.width / originalViewport.height;
 
-            const viewport = firstPage.getViewport({ scale: 1 });
-
-            const ratio = viewport.width / viewport.height;
-
-
-
-            // Target 95% of screen height or 90% of width
-
-            let viewH = window.innerHeight * 0.95;
-
+            // 2. Responsive Sizing (Ensure it fits 2 pages side-by-side)
+            let viewH = window.innerHeight * 0.85; // Use 85% of screen height
             let viewW = viewH * ratio;
 
-
-
-            if (viewW > window.innerWidth * 0.45) { // Ensure two pages fit in landscape
-
-                viewW = window.innerWidth * 0.45;
-
+            // If the width is too big for the screen, scale down based on width
+            if (viewW * 2 > window.innerWidth * 0.9) {
+                viewW = (window.innerWidth * 0.9) / 2;
                 viewH = viewW / ratio;
-
             }
 
-
-
-            // 2. Render High-Quality Pages
-
+            // 3. High Definition Rendering
             for (let i = 1; i <= pdf.numPages; i++) {
-
+                progress.innerText = `Processing page ${i} of ${pdf.numPages}`;
                 const page = await pdf.getPage(i);
-
-                const renderViewport = page.getPageViewport({ scale: 2 }); // High DPI
-
-                const canvas = document.createElement('canvas');
-
-                const context = canvas.getContext('2d');
-
                 
-
+                // Scale 3.0 provides excellent text clarity for reading
+                const renderViewport = page.getViewport({ scale: 3.0 }); 
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d', { alpha: false });
+                
                 canvas.height = renderViewport.height;
-
                 canvas.width = renderViewport.width;
 
-
-
-                await page.render({ canvasContext: context, viewport: renderViewport }).promise;
-
-
+                await page.render({ 
+                    canvasContext: context, 
+                    viewport: renderViewport,
+                    intent: 'display'
+                }).promise;
 
                 const pageDiv = document.createElement('div');
-
                 pageDiv.className = 'page';
-
                 pageDiv.appendChild(canvas);
-
                 bookDiv.appendChild(pageDiv);
-
             }
 
-
-
             document.getElementById('loader').style.display = 'none';
+            bookDiv.style.opacity = '1';
 
-            bookDiv.style.visibility = 'visible';
-
-
-
-            // 3. Optimized PageFlip Configuration
-
+            // 4. PageFlip Config
             const pageFlip = new St.PageFlip(bookDiv, {
-
                 width: Math.round(viewW),
-
                 height: Math.round(viewH),
-
-                size: "stretch", // Stretch avoids the "jump to top" bug
-
+                size: "fixed", // Fixed size prevents the 'jump' bug
                 minWidth: 300,
-
                 maxWidth: 2000,
-
                 minHeight: 400,
-
                 maxHeight: 2000,
-
                 drawShadow: true,
-
                 showCover: true,
-
-                usePortrait: false,
-
-                startPage: 0,
-
-                flippingTime: 1000,
-
-                mobileScrollSupport: false,
-
-                clickEventForward: false, // Reduces accidental flips
-
-                useMouseEvents: true      // Keeps the peel effect but makes it less sensitive
-
+                usePortrait: false, // Forces landscape (book) view
+                flippingTime: 800,
+                useMouseEvents: true,
+                clickEventForward: false // Only arrows or drag will flip
             });
-
-
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
+            // 5. Controls
+            document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
+            document.getElementById('nextBtn').onclick = () => pageFlip.flipNext();
 
-
-            // 4. Arrow Navigation Logic
-
-            document.getElementById('prevBtn').addEventListener('click', () => {
-
-                pageFlip.flipPrev();
-
+            // Keyboard support
+            window.addEventListener('keydown', (e) => {
+                if (e.key === "ArrowLeft") pageFlip.flipPrev();
+                if (e.key === "ArrowRight") pageFlip.flipNext();
             });
-
-            document.getElementById('nextBtn').addEventListener('click', () => {
-
-                pageFlip.flipNext();
-
-            });
-
-
-
-            // Update UI based on page
-
-            pageFlip.on('flip', (e) => {
-
-                console.log("Current page: " + e.data);
-
-            });
-
-
 
         } catch (err) {
-
             console.error(err);
-
-            document.getElementById('loader').innerHTML = "Error loading PDF. Please check Drive permissions.";
-
+            document.getElementById('loader').innerHTML = "Error loading PDF. Please check if the file is shared as 'Anyone with the link'.";
         }
-
     }
-
-
 
     init();
 
-
-
-    // Re-center on window resize
-
+    // Auto-refresh on resize to maintain proportions
+    let resizeTimer;
     window.addEventListener('resize', () => {
-
-        location.reload(); 
-
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => location.reload(), 300);
     });
-
 </script>
-
 </body>
-
 </html>
