@@ -17,11 +17,16 @@
         
         .page { background: white; width: 100%; height: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         
-        /* ADJUSTMENT: Force the browser to render the canvas with high contrast sharpness */
-        canvas { width: 100%; height: 100%; image-rendering: -webkit-optimize-contrast; }
+        /* FIX: High-contrast sharpening and crisp edge detection */
+        canvas { 
+            width: 100% !important; 
+            height: 100% !important; 
+            display: block;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
 
         #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; text-align: center; }
-        
         .spinner { width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
@@ -30,7 +35,7 @@
 
 <div id="loader">
     <div class="spinner"></div>
-    <div id="load-text">Initializing Pandawa Reader...</div>
+    <div id="load-text">Optimizing Text Sharpness...</div>
 </div>
 
 <div id="canvas-container"><div id="my-book"></div></div>
@@ -51,7 +56,6 @@
         if (fileUrl) {
             log("Processing PDF source...");
             let cleanPath = decodeURIComponent(fileUrl);
-            
             if (cleanPath.includes("github.com") && cleanPath.includes("/blob/")) {
                 finalUrl = cleanPath.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
             } else if (cleanPath.startsWith("http")) {
@@ -61,7 +65,6 @@
                 finalUrl = currentDir + "/" + cleanPath;
             }
             finalUrl = encodeURI(finalUrl);
-
         } else if (driveId) {
             log("Processing Google Drive ID...");
             finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
@@ -71,26 +74,36 @@
         }
 
         try {
-            log(`Fetching from: ${finalUrl}`);
+            log(`Fetching: ${finalUrl}`);
             const loadingTask = pdfjsLib.getDocument(finalUrl);
             const pdf = await loadingTask.promise;
             const bookDiv = document.getElementById('my-book');
             bookDiv.innerHTML = ''; 
 
+            // FIX: Detect screen density (Retina/4K support)
+            const dpr = window.devicePixelRatio || 1;
+            const baseScale = 2.5; // Increased base scale for ultra-sharpness
+            
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 
-                // ADJUSTMENT: Set scale to 2.0 for High Definition text sharpness
-                const viewport = page.getViewport({ scale: 2.0 }); 
+                // ADJUSTMENT: We multiply the scale by the device pixel ratio
+                const viewport = page.getViewport({ scale: baseScale * dpr }); 
                 const canvas = document.createElement('canvas');
-                
-                // Keep alpha: false for performance, but the 2.0 scale handles the blur
-                const context = canvas.getContext('2d', { alpha: false });
+                const context = canvas.getContext('2d', { 
+                    alpha: false,
+                    desynchronized: true // Performance boost for high-res rendering
+                });
                 
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
 
-                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                // High-fidelity rendering
+                await page.render({ 
+                    canvasContext: context, 
+                    viewport: viewport,
+                    intent: 'print' // Use print intent for cleaner font edges
+                }).promise;
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
@@ -107,11 +120,11 @@
                 showCover: true, 
                 usePortrait: true, 
                 mobileScrollSupport: true,
-                maxShadowOpacity: 0.2 // Reduced shadow to keep the 2.0 scale animation smooth
+                maxShadowOpacity: 0.15 // Light shadows to keep it smooth
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-            log("Flipbook loaded!");
+            log("Flipbook loaded at Ultra-HD!");
             
         } catch (err) {
             log(`CRITICAL ERROR: ${err.message}`);
