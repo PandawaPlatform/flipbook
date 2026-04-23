@@ -36,14 +36,12 @@
             position: fixed; top: 50%; left: 50%; 
             transform: translate(-50%, -50%); color: white; text-align: center;
         }
-        #debug-url { color: #666; font-size: 10px; margin-top: 10px; word-break: break-all; max-width: 300px; }
     </style>
 </head>
 <body>
 
 <div id="loader">
-    <div id="status-text">Loading PDF Document...</div>
-    <div id="debug-url"></div>
+    <div id="status-text">Building Flipbook...</div>
 </div>
 
 <div id="viewport">
@@ -62,19 +60,14 @@
 
     async function init() {
         let sourceUrl = '';
-
         if (githubFile) {
-            // CRITICAL: Must use raw.githubusercontent.com for actual data
-            sourceUrl = `https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/${githubFile}`;
+            sourceUrl = `https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/${encodeURIComponent(githubFile)}`;
         } else if (driveId) {
             sourceUrl = `https://drive.google.com/uc?export=download&id=${driveId}`;
         } else {
-            document.getElementById('status-text').innerHTML = "No PDF source provided.";
+            document.getElementById('status-text').innerHTML = "No source found.";
             return;
         }
-
-        // Show the user what we are trying to fetch
-        document.getElementById('debug-url').innerText = "Attempting to fetch: " + sourceUrl;
 
         const finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`;
 
@@ -82,30 +75,39 @@
             const pdf = await pdfjsLib.getDocument(finalUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
+            // 1. Setup Dimensions
             const firstPage = await pdf.getPage(1);
             const tempViewport = firstPage.getViewport({ scale: 1 });
             const ratio = tempViewport.width / tempViewport.height;
 
             let viewH = window.innerHeight * 0.95;
             let viewW = viewH * ratio;
-
             if (viewW > window.innerWidth * 0.45) {
                 viewW = window.innerWidth * 0.45;
                 viewH = viewW / ratio;
             }
 
+            // 2. Faster Page Building Loop
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const renderViewport = page.getPageViewport({ scale: 2 }); 
+                // SPEED FIX: Scale 1.5 is significantly faster than 2.0
+                const renderViewport = page.getPageViewport({ scale: 1.5 }); 
                 const canvas = document.createElement('canvas');
                 canvas.height = renderViewport.height;
                 canvas.width = renderViewport.width;
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport: renderViewport }).promise;
+
+                await page.render({ 
+                    canvasContext: canvas.getContext('2d', { alpha: false }), 
+                    viewport: renderViewport 
+                }).promise;
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
                 pageDiv.appendChild(canvas);
                 bookDiv.appendChild(pageDiv);
+                
+                // Update status for user
+                if(i % 5 === 0) document.getElementById('status-text').innerText = `Loading: ${i}/${pdf.numPages}`;
             }
 
             document.getElementById('loader').style.display = 'none';
@@ -122,8 +124,7 @@
                 drawShadow: true,
                 showCover: true,
                 usePortrait: false,
-                startPage: 0,
-                flippingTime: 1000,
+                flippingTime: 800,
                 useMouseEvents: true
             });
 
@@ -134,8 +135,7 @@
 
         } catch (err) {
             console.error(err);
-            document.getElementById('status-text').innerHTML = "Error loading document.";
-            document.getElementById('status-text').style.color = "red";
+            document.getElementById('status-text').innerHTML = "Failed to load PDF.";
         }
     }
 
