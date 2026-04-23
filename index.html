@@ -16,19 +16,19 @@
         .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); background: var(--arrow-bg); border: none; color: white; width: 60px; height: 60px; border-radius: 50%; cursor: pointer; z-index: 100; display: flex; align-items: center; justify-content: center; transition: 0.3s; backdrop-filter: blur(5px); font-size: 24px; }
         .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
         .btn-prev { left: 30px; } .btn-next { right: 30px; }
-        #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center; width: 80%; }
-        .error-msg { color: #ff4d4d; font-weight: bold; margin-bottom: 10px; }
-        .debug-box { background: #222; padding: 10px; border-radius: 8px; font-size: 11px; color: #aaa; word-break: break-all; margin-top: 10px; border: 1px solid #444; }
+        #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center; width: 90%; }
+        .err { color: #ff4d4d; font-weight: bold; font-size: 1.2rem; }
+        .debug { color: #777; font-size: 11px; margin-top: 15px; background: #222; padding: 10px; border-radius: 8px; word-break: break-all; }
     </style>
 </head>
 <body>
 
 <div id="loader">
-    <div id="status-text">Initializing Engine...</div>
+    <div id="status-text">Building Flipbook...</div>
     <div id="debug-area" style="display:none;">
-        <div class="error-msg">FAILED TO LOAD PDF</div>
-        <div id="debug-url" class="debug-box"></div>
-        <p style="font-size: 12px; color: #888;">Check if the file exists on GitHub exactly as named above.</p>
+        <div class="err">ERROR: FILE NOT FOUND</div>
+        <div id="debug-url" class="debug"></div>
+        <p style="font-size:12px; color:#555; margin-top:10px;">1. Is the file name exact? 2. Is the repo PUBLIC?</p>
     </div>
 </div>
 
@@ -49,7 +49,7 @@
     async function init() {
         let sourceUrl = '';
         if (githubFile) {
-            // No extra encoding here because PHP rawurlencode already handled the space
+            // FIX: We do NOT encodeURIComponent here because the 'finalUrl' encoding handles it.
             sourceUrl = `https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/${githubFile}`;
         } else if (driveId) {
             sourceUrl = `https://drive.google.com/uc?export=download&id=${driveId}`;
@@ -58,17 +58,15 @@
             return;
         }
 
-        // Final URL for the Proxy
+        // Final URL for Proxy - This correctly handles spaces in 'sourceUrl'
         const finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`;
 
         try {
-            document.getElementById('status-text').innerText = "Fetching data from GitHub...";
             const pdf = await pdfjsLib.getDocument(finalUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
             const firstPage = await pdf.getPage(1);
-            const tempViewport = firstPage.getViewport({ scale: 1 });
-            const ratio = tempViewport.width / tempViewport.height;
+            const ratio = firstPage.getViewport({ scale: 1 }).width / firstPage.getViewport({ scale: 1 }).height;
 
             let viewH = window.innerHeight * 0.95;
             let viewW = viewH * ratio;
@@ -79,7 +77,7 @@
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const renderViewport = page.getPageViewport({ scale: 1.5 }); 
+                const renderViewport = page.getPageViewport({ scale: 1.5 }); // FAST SCALE
                 const canvas = document.createElement('canvas');
                 canvas.height = renderViewport.height;
                 canvas.width = renderViewport.width;
@@ -94,7 +92,7 @@
                 pageDiv.appendChild(canvas);
                 bookDiv.appendChild(pageDiv);
                 
-                document.getElementById('status-text').innerText = `Rendering: ${i}/${pdf.numPages}`;
+                if (i % 2 === 0) document.getElementById('status-text').innerText = `Loading: ${i}/${pdf.numPages}`;
             }
 
             document.getElementById('loader').style.display = 'none';
@@ -104,8 +102,6 @@
                 width: Math.round(viewW),
                 height: Math.round(viewH),
                 size: "fixed", 
-                drawShadow: true,
-                showCover: true,
                 flippingTime: 800,
                 useMouseEvents: true
             });
