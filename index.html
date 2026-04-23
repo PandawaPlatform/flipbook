@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pandawa Reader Pro</title>
+    <title>Pandawa Flipbook Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
     <style>
         :root {
-            --arrow-bg: rgba(255, 255, 255, 0.1);
-            --arrow-hover: rgba(255, 255, 255, 0.25);
+            --arrow-bg: rgba(255, 255, 255, 0.15);
+            --arrow-hover: rgba(255, 255, 255, 0.3);
         }
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
@@ -17,7 +17,6 @@
             font-family: sans-serif;
         }
         
-        /* Centered Container */
         #viewport {
             display: flex;
             justify-content: center;
@@ -27,11 +26,11 @@
             position: relative;
         }
 
-        /* The Flipbook Wrapper */
         #my-book {
-            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            box-shadow: 0 0 100px rgba(0,0,0,0.7);
             background: #fff;
-            visibility: hidden; /* Hide until loaded to prevent jump */
+            visibility: hidden;
+            z-index: 5;
         }
 
         .page { background: white; overflow: hidden; }
@@ -49,17 +48,18 @@
             background: var(--arrow-bg);
             border: none;
             color: white;
-            width: 60px;
-            height: 60px;
+            width: 65px;
+            height: 65px;
             border-radius: 50%;
             cursor: pointer;
-            z-index: 100;
+            z-index: 1000;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.3s ease;
-            backdrop-filter: blur(5px);
-            font-size: 24px;
+            backdrop-filter: blur(10px);
+            font-size: 28px;
+            user-select: none;
         }
         .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
         .btn-prev { left: 30px; }
@@ -68,56 +68,66 @@
         #loader { 
             position: fixed; top: 50%; left: 50%; 
             transform: translate(-50%, -50%); color: white; 
+            font-weight: bold; text-align: center;
         }
     </style>
 </head>
 <body>
 
-<div id="loader">Loading PDF Document...</div>
+<div id="loader">RENDERING PAGES...<br><small id="prog">0%</small></div>
 
 <div id="viewport">
     <button class="nav-btn btn-prev" id="prevBtn">❮</button>
-    
-    <div id="my-book">
-        </div>
-
+    <div id="my-book"></div>
     <button class="nav-btn btn-next" id="nextBtn">❯</button>
 </div>
 
 <script>
+    // --- CONFIGURATION ---
+    // 1. If using GitHub: Put the RAW URL here
+    // 2. If using Drive: Put the ID here
+    const DEFAULT_SOURCE = "1YAn3Oclw9G6_S-pX1Z9_H5U9n_vL9O7v"; 
+    // ---------------------
+
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const driveId = urlParams.get('id') || '1YAn3Oclw9G6_S-pX1Z9_H5U9n_vL9O7v'; // Example ID if none provided
-
     async function init() {
-        const finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
+        const urlParams = new URLSearchParams(window.location.search);
+        let source = urlParams.get('id') || urlParams.get('pdf') || DEFAULT_SOURCE;
+        
+        let finalUrl = source;
+        // If it's just a Drive ID (no slash/dot), format it
+        if (!source.includes('/') && !source.includes('.')) {
+            finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${source}`);
+        }
 
         try {
             const pdf = await pdfjsLib.getDocument(finalUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
-            // 1. Better Dimension Calculation
             const firstPage = await pdf.getPage(1);
-            const viewport = firstPage.getViewport({ scale: 1 });
-            const ratio = viewport.width / viewport.height;
+            const originalViewport = firstPage.getViewport({ scale: 1 });
+            const ratio = originalViewport.width / originalViewport.height;
 
-            // Target 95% of screen height or 90% of width
-            let viewH = window.innerHeight * 0.95;
+            // SAFE ZONE CALCULATION: Fills as much of the screen as possible
+            let viewH = window.innerHeight * 0.90; 
             let viewW = viewH * ratio;
 
-            if (viewW > window.innerWidth * 0.45) { // Ensure two pages fit in landscape
-                viewW = window.innerWidth * 0.45;
+            // Ensure double-page spread doesn't hit the side arrows
+            if (viewW * 2 > window.innerWidth * 0.80) {
+                viewW = (window.innerWidth * 0.80) / 2;
                 viewH = viewW / ratio;
             }
 
-            // 2. Render High-Quality Pages
             for (let i = 1; i <= pdf.numPages; i++) {
+                document.getElementById('prog').innerText = Math.round((i/pdf.numPages)*100) + "%";
                 const page = await pdf.getPage(i);
-                const renderViewport = page.getPageViewport({ scale: 2 }); // High DPI
+                
+                // Scale 3 = Ultra HD Readability
+                const renderViewport = page.getViewport({ scale: 3 }); 
                 const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
+                const context = canvas.getContext('2d', { alpha: false });
                 
                 canvas.height = renderViewport.height;
                 canvas.width = renderViewport.width;
@@ -133,51 +143,36 @@
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
 
-            // 3. Optimized PageFlip Configuration
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: Math.round(viewW),
                 height: Math.round(viewH),
-                size: "stretch", // Stretch avoids the "jump to top" bug
-                minWidth: 300,
-                maxWidth: 2000,
-                minHeight: 400,
-                maxHeight: 2000,
+                size: "fixed", 
                 drawShadow: true,
                 showCover: true,
                 usePortrait: false,
-                startPage: 0,
-                flippingTime: 1000,
-                mobileScrollSupport: false,
-                clickEventForward: false, // Reduces accidental flips
-                useMouseEvents: true      // Keeps the peel effect but makes it less sensitive
+                flippingTime: 800,
+                useMouseEvents: true,
+                clickEventForward: false
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
-            // 4. Arrow Navigation Logic
-            document.getElementById('prevBtn').addEventListener('click', () => {
-                pageFlip.flipPrev();
-            });
-            document.getElementById('nextBtn').addEventListener('click', () => {
-                pageFlip.flipNext();
-            });
-
-            // Update UI based on page
-            pageFlip.on('flip', (e) => {
-                console.log("Current page: " + e.data);
-            });
+            document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
+            document.getElementById('nextBtn').onclick = () => pageFlip.flipNext();
 
         } catch (err) {
             console.error(err);
-            document.getElementById('loader').innerHTML = "Error loading PDF. Please check Drive permissions.";
+            document.getElementById('loader').innerHTML = "FAILED TO LOAD PDF<br>CHECK SOURCE URL";
         }
     }
 
     init();
 
-    // Re-center on window resize
+    // Fixes the resize/jump issue
     window.addEventListener('resize', () => {
-        location.reload(); 
+        let timer;
+        clearTimeout(timer);
+        timer = setTimeout(() => location.reload(), 400);
     });
 </script>
 </body>
