@@ -3,77 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pandawa Reader</title>
+    <title>Pandawa Reader Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; }
+        :root {
+            --arrow-bg: rgba(255, 255, 255, 0.1);
+            --arrow-hover: rgba(255, 255, 255, 0.25);
+        }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            overflow: hidden; background: #121212; 
+            font-family: sans-serif;
+        }
         
-        #canvas-container { 
-            display: flex; justify-content: center; align-items: center; 
-            width: 100vw; height: 100vh; 
+        /* Centered Container */
+        #viewport {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* The Flipbook Wrapper */
+        #my-book {
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            background: #fff;
+            visibility: hidden; /* Hide until loaded to prevent jump */
         }
 
         .page { background: white; overflow: hidden; }
         
-        /* THE SHARPNESS FIX: Prevents the browser from blurring the high-res canvas */
         canvas { 
-            width: 100%; height: 100%; 
-            display: block;
+            width: 100%; height: 100%; display: block;
             image-rendering: -webkit-optimize-contrast;
-            image-rendering: crisp-edges;
         }
 
-        #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; text-align: center; color: white; font-family: sans-serif; }
+        /* SaaS Style Navigation Arrows */
+        .nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--arrow-bg);
+            border: none;
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+            font-size: 24px;
+        }
+        .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
+        .btn-prev { left: 30px; }
+        .btn-next { right: 30px; }
+
+        #loader { 
+            position: fixed; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); color: white; 
+        }
     </style>
 </head>
 <body>
 
-<div id="loader" id="load-block">Loading...</div>
-<div id="canvas-container"><div id="my-book"></div></div>
+<div id="loader">Loading PDF Document...</div>
+
+<div id="viewport">
+    <button class="nav-btn btn-prev" id="prevBtn">❮</button>
+    
+    <div id="my-book">
+        </div>
+
+    <button class="nav-btn btn-next" id="nextBtn">❯</button>
+</div>
 
 <script>
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const urlParams = new URLSearchParams(window.location.search);
-    const fileUrl = urlParams.get('pdf');
-    const driveId = urlParams.get('id');
+    const driveId = urlParams.get('id') || '1YAn3Oclw9G6_S-pX1Z9_H5U9n_vL9O7v'; // Example ID if none provided
 
     async function init() {
-        let finalUrl = "";
-        if (fileUrl) {
-            let cleanPath = decodeURIComponent(fileUrl);
-            finalUrl = cleanPath.includes("github.com") ? cleanPath.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/") : window.location.href.substring(0, window.location.href.lastIndexOf('/')) + "/" + cleanPath;
-            finalUrl = encodeURI(finalUrl);
-        } else if (driveId) {
-            finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
-        }
+        const finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
 
         try {
             const pdf = await pdfjsLib.getDocument(finalUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
-            // 1. Get the shape of your PDF immediately
+            // 1. Better Dimension Calculation
             const firstPage = await pdf.getPage(1);
             const viewport = firstPage.getViewport({ scale: 1 });
             const ratio = viewport.width / viewport.height;
 
-            // 2. Lock the display size so it NEVER jumps or scrolls
-            const viewH = window.innerHeight * 0.9;
-            const viewW = viewH * ratio;
+            // Target 95% of screen height or 90% of width
+            let viewH = window.innerHeight * 0.95;
+            let viewW = viewH * ratio;
 
+            if (viewW > window.innerWidth * 0.45) { // Ensure two pages fit in landscape
+                viewW = window.innerWidth * 0.45;
+                viewH = viewW / ratio;
+            }
+
+            // 2. Render High-Quality Pages
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                // Scale 2.0 + DPR is the sweet spot for crisp text without lag
-                const renderViewport = page.getViewport({ scale: 2 * (window.devicePixelRatio || 1) });
+                const renderViewport = page.getPageViewport({ scale: 2 }); // High DPI
                 const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d', { alpha: false });
+                const context = canvas.getContext('2d');
                 
                 canvas.height = renderViewport.height;
                 canvas.width = renderViewport.width;
 
-                await page.render({ canvasContext: context, viewport: renderViewport, intent: 'print' }).promise;
+                await page.render({ canvasContext: context, viewport: renderViewport }).promise;
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
@@ -82,29 +131,54 @@
             }
 
             document.getElementById('loader').style.display = 'none';
+            bookDiv.style.visibility = 'visible';
 
-            // 3. FIXED SIZE initialization (Stops the "go to top and back" jump)
+            // 3. Optimized PageFlip Configuration
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: Math.round(viewW),
                 height: Math.round(viewH),
-                size: "fixed", 
-                minWidth: Math.round(viewW),
-                minHeight: Math.round(viewH),
-                maxWidth: Math.round(viewW),
-                maxHeight: Math.round(viewH),
+                size: "stretch", // Stretch avoids the "jump to top" bug
+                minWidth: 300,
+                maxWidth: 2000,
+                minHeight: 400,
+                maxHeight: 2000,
+                drawShadow: true,
                 showCover: true,
-                usePortrait: false, // Prevents orientation jumping
-                mobileScrollSupport: false, // Stops the browser from trying to scroll
-                flippingTime: 800
+                usePortrait: false,
+                startPage: 0,
+                flippingTime: 1000,
+                mobileScrollSupport: false,
+                clickEventForward: false, // Reduces accidental flips
+                useMouseEvents: true      // Keeps the peel effect but makes it less sensitive
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-            
+
+            // 4. Arrow Navigation Logic
+            document.getElementById('prevBtn').addEventListener('click', () => {
+                pageFlip.flipPrev();
+            });
+            document.getElementById('nextBtn').addEventListener('click', () => {
+                pageFlip.flipNext();
+            });
+
+            // Update UI based on page
+            pageFlip.on('flip', (e) => {
+                console.log("Current page: " + e.data);
+            });
+
         } catch (err) {
-            document.getElementById('loader').innerHTML = "Error loading PDF";
+            console.error(err);
+            document.getElementById('loader').innerHTML = "Error loading PDF. Please check Drive permissions.";
         }
     }
+
     init();
+
+    // Re-center on window resize
+    window.addEventListener('resize', () => {
+        location.reload(); 
+    });
 </script>
 </body>
 </html>
