@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pandawa Flipbook Engine</title>
+    <title>Pandawa Reader</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
     <style>
@@ -11,87 +11,43 @@
         #canvas-container { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; }
         .page { background: white; width: 100%; height: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; text-align: center; }
-        #debug-log { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); color: #00ff00; font-family: monospace; font-size: 10px; max-height: 100px; overflow-y: auto; padding: 10px; display: none; }
     </style>
 </head>
 <body>
 
-<div id="loader">
-    <div class="spinner"></div>
-    <div id="load-text">Connecting to Google Drive...</div>
-</div>
-
+<div id="loader"><div id="load-text">Opening Document...</div></div>
 <div id="canvas-container"><div id="my-book"></div></div>
-<div id="debug-log"></div>
 
 <script>
-    const log = (msg) => {
-        const el = document.getElementById('debug-log');
-        el.style.display = 'block';
-        el.innerHTML += `> ${msg}<br>`;
-        console.log(msg);
-    };
-
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const urlParams = new URLSearchParams(window.location.search);
-    const driveId = urlParams.get('id');
+    const driveId = urlParams.get('id'); // For Google Drive
+    const fileUrl = urlParams.get('pdf'); // For GitHub Files
 
-    if (!driveId) {
-        document.getElementById('load-text').innerText = "Missing ID in URL (?id=...)";
-    } else {
-        initFlipbook(driveId);
-    }
+    async function init() {
+        let finalUrl = "";
 
-    async function initFlipbook(id) {
-        const loadText = document.getElementById('load-text');
-        // Proxy List - We try the most modern ones first
-        const proxies = [
-            'https://api.allorigins.win/raw?url=',
-            'https://corsproxy.io/?',
-            'https://api.codetabs.com/v1/proxy?quest='
-        ];
-
-        let pdfData = null;
-
-        for (let proxy of proxies) {
-            try {
-                log(`Trying Proxy: ${proxy.split('/')[2]}`);
-                const driveUrl = `https://drive.google.com/uc?export=download&id=${id}`;
-                const response = await fetch(proxy + encodeURIComponent(driveUrl));
-                
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                
-                pdfData = await response.arrayBuffer();
-                
-                // Check if we accidentally downloaded a Google Login/Error page instead of a PDF
-                const decoder = new TextDecoder();
-                const startText = decoder.decode(pdfData.slice(0, 5));
-                if (startText.includes('<!DOC') || startText.includes('<html')) {
-                    throw new Error("Received HTML instead of PDF (Google blocked the proxy)");
-                }
-
-                log("Success! PDF data received.");
-                break; 
-            } catch (err) {
-                log(`Failed: ${err.message}`);
-            }
-        }
-
-        if (!pdfData) {
-            loadText.innerHTML = "<span style='color:#ff6b6b'>Google Drive blocked all connections.</span><br><small>Try opening the PDF in Drive to ensure it's not too large (>100MB).</small>";
+        if (fileUrl) {
+            // BEST METHOD: Load directly from your GitHub
+            finalUrl = fileUrl; 
+        } else if (driveId) {
+            // BACKUP: Load from Google Drive via Proxy
+            finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
+        } else {
+            document.getElementById('load-text').innerText = "No PDF specified.";
             return;
         }
 
         try {
-            loadText.innerText = "Rendering Pages...";
-            const pdf = await pdfjsLib.getDocument({data: pdfData}).promise;
+            const loadingTask = pdfjsLib.getDocument(finalUrl);
+            const pdf = await loadingTask.promise;
             const bookDiv = document.getElementById('my-book');
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const viewport = page.getDimensions ? page.getViewport({ scale: 1.5 }) : page.getViewport({ scale: 1.5 });
+                const viewport = page.getViewport({ scale: 1.5 });
                 const canvas = document.createElement('canvas');
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
@@ -104,19 +60,16 @@
             }
 
             document.getElementById('loader').style.display = 'none';
-            document.getElementById('debug-log').style.display = 'none';
-
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: 550, height: 800, size: "stretch",
                 showCover: true, usePortrait: true, mobileScrollSupport: true
             });
-
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-        } catch (renderErr) {
-            log(`Render Error: ${renderErr.message}`);
-            loadText.innerText = "Error rendering PDF. Check Console.";
+        } catch (err) {
+            document.getElementById('load-text').innerHTML = `<span style="color:red">Failed to load.</span><br><small>${err.message}</small>`;
         }
     }
+    init();
 </script>
 </body>
 </html>
