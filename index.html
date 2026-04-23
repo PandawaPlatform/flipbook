@@ -9,7 +9,6 @@
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; color: white; font-family: sans-serif; }
         
-        /* ADJUSTMENT: Center the container and add a fade-in effect for speed feel */
         #canvas-container { 
             display: flex; justify-content: center; align-items: center; 
             width: 100vw; height: 100vh; 
@@ -17,9 +16,12 @@
         }
         
         .page { background: white; width: 100%; height: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        
+        /* ADJUSTMENT: Force the browser to render the canvas with high contrast sharpness */
+        canvas { width: 100%; height: 100%; image-rendering: -webkit-optimize-contrast; }
+
         #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; text-align: center; }
         
-        /* Adding a simple spinner for a better "premium" feel during the 1-second load */
         .spinner { width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
@@ -78,11 +80,11 @@
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 
-                // ADJUSTMENT: Lower scale to 1.3 for significantly faster rendering speed
-                const viewport = page.getViewport({ scale: 1.3 }); 
+                // ADJUSTMENT: Set scale to 2.0 for High Definition text sharpness
+                const viewport = page.getViewport({ scale: 2.0 }); 
                 const canvas = document.createElement('canvas');
                 
-                // SPEED OPTIMIZATION: Use 'alpha: false' to speed up canvas drawing
+                // Keep alpha: false for performance, but the 2.0 scale handles the blur
                 const context = canvas.getContext('2d', { alpha: false });
                 
                 canvas.height = viewport.height;
@@ -96,7 +98,6 @@
                 bookDiv.appendChild(pageDiv);
             }
 
-            // ADJUSTMENT: Show the container with a smooth fade only after rendering is done
             document.getElementById('loader').style.display = 'none';
             document.getElementById('canvas-container').style.opacity = '1';
             
@@ -104,10 +105,9 @@
                 width: 550, height: 800, 
                 size: "stretch",
                 showCover: true, 
-                // ADJUSTMENT: mobileScrollSupport & usePortrait helps center it in smaller frames
                 usePortrait: true, 
                 mobileScrollSupport: true,
-                maxShadowOpacity: 0.3 // Slightly lighter shadows for faster GPU performance
+                maxShadowOpacity: 0.2 // Reduced shadow to keep the 2.0 scale animation smooth
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
