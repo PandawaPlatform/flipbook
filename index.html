@@ -26,14 +26,13 @@
     const driveId = urlParams.get('id'); // For Google Drive
     const fileUrl = urlParams.get('pdf'); // For GitHub Files
 
-    async function init() {
+async function init() {
         let finalUrl = "";
 
         if (fileUrl) {
-            // BEST METHOD: Load directly from your GitHub
-            finalUrl = fileUrl; 
+            // FIX: We use encodeURI to handle spaces like "Pengantar Awal.pdf"
+            finalUrl = encodeURI(fileUrl); 
         } else if (driveId) {
-            // BACKUP: Load from Google Drive via Proxy
             finalUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveId}`);
         } else {
             document.getElementById('load-text').innerText = "No PDF specified.";
@@ -41,6 +40,7 @@
         }
 
         try {
+            log(`Fetching: ${finalUrl}`);
             const loadingTask = pdfjsLib.getDocument(finalUrl);
             const pdf = await loadingTask.promise;
             const bookDiv = document.getElementById('my-book');
