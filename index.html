@@ -99,12 +99,12 @@
             const viewport = firstPage.getViewport({ scale: 1 });
             const ratio = viewport.width / viewport.height;
 
-            // SIZE FIX: Fit 90% of screen height, but leave room for arrows
-            let viewH = window.innerHeight * 0.90;
+            // SIZE FIX: Maximized to 98% of viewport
+            let viewH = window.innerHeight * 0.98;
             let viewW = viewH * ratio;
 
-            if (viewW * 2 > window.innerWidth * 0.85) {
-                viewW = (window.innerWidth * 0.85) / 2;
+            if (viewW * 2 > window.innerWidth * 0.98) {
+                viewW = (window.innerWidth * 0.98) / 2;
                 viewH = viewW / ratio;
             }
 
