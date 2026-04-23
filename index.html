@@ -15,17 +15,14 @@
             opacity: 0; transition: opacity 0.5s ease; 
         }
         
-        #my-book { margin: auto; }
+        #my-book { width: 95%; height: 95%; } /* Let the container define the bounds */
 
-        .page { background: white; width: 100%; height: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.5); overflow: hidden; }
+        .page { background: white; box-shadow: 0 0 20px rgba(0,0,0,0.5); overflow: hidden; }
         
-        /* ADJUSTMENT: Remove 100% width/height to stop stretching. Use CSS scaling for sharpness. */
+        /* FIX: Remove forced 100% to let the internal engine control sharpness */
         canvas { 
             display: block;
-            width: 100%;
-            height: 100%;
-            image-rendering: -webkit-optimize-contrast;
-            image-rendering: crisp-edges;
+            image-rendering: high-quality;
         }
 
         #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; text-align: center; }
@@ -37,7 +34,7 @@
 
 <div id="loader">
     <div class="spinner"></div>
-    <div id="load-text">Rendering HD Text...</div>
+    <div id="load-text">Sharpening Content...</div>
 </div>
 
 <div id="canvas-container"><div id="my-book"></div></div>
@@ -56,10 +53,8 @@
         let finalUrl = "";
         if (fileUrl) {
             let cleanPath = decodeURIComponent(fileUrl);
-            if (cleanPath.includes("github.com") && cleanPath.includes("/blob/")) {
+            if (cleanPath.includes("github.com")) {
                 finalUrl = cleanPath.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
-            } else if (cleanPath.startsWith("http")) {
-                finalUrl = cleanPath;
             } else {
                 const currentDir = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
                 finalUrl = currentDir + "/" + cleanPath;
@@ -76,34 +71,25 @@
             bookDiv.innerHTML = ''; 
 
             const firstPage = await pdf.getPage(1);
-            const viewportOrig = firstPage.getViewport({ scale: 1 });
+            const viewportBase = firstPage.getViewport({ scale: 1 });
             
-            // ADJUSTMENT: Calculate the display size based on screen
-            const screenW = window.innerWidth * 0.9;
-            const screenH = window.innerHeight * 0.9;
-            const ratio = viewportOrig.width / viewportOrig.height;
-            
-            // Fixed base dimensions for the library
-            let displayH = screenH;
-            let displayW = displayH * ratio;
-
-            if (displayW * 2 > screenW) {
-                displayW = screenW / 2;
-                displayH = displayW / ratio;
-            }
-
-            // High-Res Render Scale (DPR Aware)
+            // DPR scaling is the secret to non-blurry text
             const dpr = window.devicePixelRatio || 1;
-            const renderScale = 2.5 * dpr; 
+            const scale = 2.0; // 2.0 is the sweet spot for speed and HD quality
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: renderScale }); 
+                const viewport = page.getViewport({ scale: scale }); 
+                
                 const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d', { alpha: false, desynchronized: true });
+                const context = canvas.getContext('2d', { alpha: false });
                 
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
+
+                // Manual pixel correction for crystal clear text
+                canvas.style.width = "100%";
+                canvas.style.height = "100%";
 
                 await page.render({ 
                     canvasContext: context, 
@@ -120,15 +106,16 @@
             document.getElementById('loader').style.display = 'none';
             document.getElementById('canvas-container').style.opacity = '1';
             
-            // ADJUSTMENT: size: "fixed" with calculated dimensions stops the stretching
+            // Use STRETCH size with the PDF's native proportions
             const pageFlip = new St.PageFlip(bookDiv, {
-                width: Math.round(displayW), 
-                height: Math.round(displayH),
-                size: "fixed", 
+                width: viewportBase.width, 
+                height: viewportBase.height,
+                size: "stretch", 
                 showCover: true, 
-                usePortrait: false, // Force spread mode for better clarity
+                usePortrait: true, // Auto-switches between 1 and 2 pages based on screen width
                 mobileScrollSupport: true,
-                maxShadowOpacity: 0.1
+                maxShadowOpacity: 0.2,
+                showPageCorners: true
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
