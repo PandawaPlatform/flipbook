@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pandawa Reader Pro HD</title>
+    <title>Pandawa Reader Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
     <style>
@@ -15,19 +15,11 @@
             width: 100vw; height: 100vh; position: relative; 
         }
 
+        /* The book container background must match the body to hide the 'empty' left page */
         #my-book { background: transparent; visibility: hidden; }
 
-        .page { background: white; overflow: hidden; }
-        
-        /* THE FIX FOR BLURRY TEXT: Forces browser to render pixels sharply */
-        canvas { 
-            width: 100%; 
-            height: 100%; 
-            display: block; 
-            image-rendering: -webkit-optimize-contrast; /* Safari/Chrome sharpness */
-            image-rendering: crisp-edges;               /* Firefox sharpness */
-            -ms-interpolation-mode: nearest-neighbor;   /* IE sharpness */
-        }
+        .page { background: white; overflow: hidden; box-shadow: inset -5px 0 10px rgba(0,0,0,0.1); }
+        canvas { width: 100%; height: 100%; display: block; }
 
         .nav-btn { 
             position: absolute; top: 50%; transform: translateY(-50%); 
@@ -51,10 +43,10 @@
 </head>
 <body>
 
-<div id="loader"><div class="spinner"></div><div id="status">HD Rendering...</div></div>
+<div id="loader"><div class="spinner"></div><div id="status">Reading Document...</div></div>
 
 <div id="viewport">
-    <button class="nav-btn btn-prev" id="prevBtn" style="display:none">❮</button>
+    <button class="nav-btn btn-prev" id="prevBtn">❮</button>
     <div id="my-book"></div>
     <button class="nav-btn btn-next" id="nextBtn">❯</button>
 </div>
@@ -73,73 +65,81 @@
             const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
+            // 1. DIMENSION CALCULATIONS
             const firstPage = await pdf.getPage(1);
             const vp = firstPage.getViewport({ scale: 1 });
-            const pdfRatio = vp.width / vp.height;
+            const pdfRatio = vp.width / vp.height; // e.g. 0.7 for A4
 
             const winW = window.innerWidth;
             const winH = window.innerHeight;
 
-            let bookH = winH * 0.94; // Optimized for 85vh container
+            // Target Height is 90% of iframe height
+            let bookH = winH * 0.9;
             let bookW = bookH * pdfRatio;
 
-            if ((bookW * 2) > winW * 0.95) {
-                bookW = (winW * 0.95) / 2;
+            // Check if double-page spread exceeds screen width
+            if ((bookW * 2) > winW * 0.9) {
+                bookW = (winW * 0.9) / 2;
                 bookH = bookW / pdfRatio;
             }
 
-            // High Definition Rendering Logic
+            // 2. RENDER PROCESS
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d', { alpha: false }); // Better performance
+                const ctx = canvas.getContext('2d');
                 
-                // Increase scale to 3 for much sharper text
-                const hdViewport = page.getViewport({ scale: 3 });
-                canvas.height = hdViewport.height;
-                canvas.width = hdViewport.width;
+                // Render at high resolution for Flowpaper quality
+                const highResVp = page.getViewport({ scale: 2 });
+                canvas.height = highResVp.height;
+                canvas.width = highResVp.width;
 
-                await page.render({ 
-                    canvasContext: ctx, 
-                    viewport: hdViewport,
-                    intent: 'print' // Optimizes for text clarity
-                }).promise;
+                await page.render({ canvasContext: ctx, viewport: highResVp }).promise;
 
                 const div = document.createElement('div');
                 div.className = 'page';
+                // This 'data-density' attribute helps the library handle the cover better
                 if (i === 1 || i === pdf.numPages) div.setAttribute('data-density', 'hard');
                 
                 div.appendChild(canvas);
                 bookDiv.appendChild(div);
                 
-                document.getElementById('status').innerText = `Enhancing: ${Math.round((i/pdf.numPages)*100)}%`;
+                document.getElementById('status').innerText = `Building: ${Math.round((i/pdf.numPages)*100)}%`;
             }
 
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
 
+            // 3. INITIALIZE FLIPBOOK
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: Math.round(bookW),
                 height: Math.round(bookH),
                 size: "fixed",
-                showCover: true,
+                minWidth: 200,
+                maxWidth: 2000,
+                minHeight: 200,
+                maxHeight: 2000,
+                showCover: true, // Shows page 1 alone
                 drawShadow: true,
-                maxShadowOpacity: 0.15,
+                maxShadowOpacity: 0.2,
                 flippingTime: 800,
                 useMouseEvents: true,
+                swipeDistance: 30,
+                // These help center the cover
                 startPage: 0,
                 autoSize: true
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
+            // Navigation
             document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
             document.getElementById('nextBtn').onclick = () => pageFlip.flipNext();
 
-            // Smart Navigation Button Visibility
+            // Auto-hide buttons on first/last page
             pageFlip.on('flip', (e) => {
-                document.getElementById('prevBtn').style.display = (e.data === 0) ? "none" : "flex";
-                document.getElementById('nextBtn').style.display = (e.data === pdf.numPages - 1) ? "none" : "flex";
+                document.getElementById('prevBtn').style.opacity = (e.data === 0) ? "0" : "1";
+                document.getElementById('nextBtn').style.opacity = (e.data === pdf.numPages - 1) ? "0" : "1";
             });
 
         } catch (e) {
@@ -149,6 +149,7 @@
 
     start();
 
+    // Responsive Fix
     let t;
     window.onresize = () => { clearTimeout(t); t = setTimeout(() => location.reload(), 500); };
 </script>
