@@ -12,13 +12,15 @@
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg-color); font-family: sans-serif; }
         #viewport { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; position: relative; }
         #my-book { background: transparent; visibility: hidden; }
-        .page { background: white; overflow: hidden; box-shadow: inset -5px 0 10px rgba(0,0,0,0.1); position: relative; }
+        /* PERFORMANCE FIX: added backface-visibility and will-change to prevent black screen flicker */
+        .page { background: white; overflow: hidden; box-shadow: inset -5px 0 10px rgba(0,0,0,0.1); position: relative; backface-visibility: hidden; will-change: transform; }
         canvas { width: 100%; height: 100%; display: block; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
         
-        /* Link Layer Positioning - FIXED: Pointer events enabled */
+        /* Link Layer Positioning - HIGH Z-INDEX for clickable links */
         .annotationLayer { 
             position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
-            z-index: 2; pointer-events: auto !important; 
+            z-index: 20 !important; pointer-events: auto !important; 
+            user-select: text;
         }
         .annotationLayer section { pointer-events: auto !important; }
         .annotationLayer a { cursor: pointer; pointer-events: auto !important; }
@@ -65,7 +67,6 @@
                 div.className = 'page';
                 if (i === 1 || i === pdf.numPages) div.setAttribute('data-density', 'hard');
 
-                // 1. Render Image (Canvas) - Scale 2 for better performance
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d', { alpha: false });
                 const hdViewport = page.getViewport({ scale: 2 });
@@ -74,7 +75,6 @@
                 await page.render({ canvasContext: ctx, viewport: hdViewport, intent: 'print' }).promise;
                 div.appendChild(canvas);
 
-                // 2. Render Link Layer (AnnotationLayer)
                 const annotationViewport = page.getViewport({ scale: (bookH / vp.height) });
                 const annotDiv = document.createElement('div');
                 annotDiv.className = 'annotationLayer';
@@ -101,10 +101,10 @@
                 size: "fixed",
                 showCover: true,
                 drawShadow: true,
-                maxShadowOpacity: 0.15,
+                maxShadowOpacity: 0.1,
                 useMouseEvents: true,
                 autoSize: true,
-                clickEventForward: false // Set to false so AnnotationLayer handles clicks directly
+                clickEventForward: true // FIXED: set to true to let links receive clicks
             });
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
             document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
