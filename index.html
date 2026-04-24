@@ -70,21 +70,20 @@
                 await page.render({ canvasContext: ctx, viewport: hdViewport, intent: 'print' }).promise;
                 div.appendChild(canvas);
 
-                // 2. Render Link Layer (AnnotationLayer)
-                // Use a scale of 1 because the CSS handles the stretch
+                // 2. Render Link Layer (AnnotationLayer) - UPDATED FOR VERSION 3.x
                 const annotationViewport = page.getViewport({ scale: (bookH / vp.height) });
                 const annotDiv = document.createElement('div');
                 annotDiv.className = 'annotationLayer';
                 const annotations = await page.getAnnotations();
-                pdfjsLib.AnnotationLayer.render({
-                    viewport: annotationViewport,
+                
+                const annotationLayer = new pdfjsLib.AnnotationLayer({
+                    viewport: annotationViewport.clone({ dontFlip: true }),
                     div: annotDiv,
                     annotations: annotations,
-                    page: page,
-                    linkService: null,
-                    downloadManager: null,
-                    renderForms: false
+                    page: page
                 });
+                
+                annotationLayer.render(annotationViewport);
                 div.appendChild(annotDiv);
 
                 bookDiv.appendChild(div);
@@ -101,7 +100,7 @@
                 maxShadowOpacity: 0.15,
                 useMouseEvents: true,
                 autoSize: true,
-                clickEventForward: true // Important for links
+                clickEventForward: true 
             });
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
             document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
