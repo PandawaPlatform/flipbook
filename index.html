@@ -12,20 +12,23 @@
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg-color); font-family: sans-serif; }
         #viewport { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; position: relative; }
         #my-book { background: transparent; visibility: hidden; }
-        /* PERFORMANCE FIX: added backface-visibility and will-change to prevent black screen flicker */
-        .page { background: white; overflow: hidden; box-shadow: inset -5px 0 10px rgba(0,0,0,0.1); position: relative; backface-visibility: hidden; will-change: transform; }
-        canvas { width: 100%; height: 100%; display: block; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
         
-        /* Link Layer Positioning - HIGH Z-INDEX for clickable links */
+        /* STABILITY FIX: Added transform-style and perspective for smoother flipping */
+        .page { 
+            background: white; overflow: hidden; box-shadow: inset -5px 0 10px rgba(0,0,0,0.1); 
+            position: relative; backface-visibility: hidden; will-change: transform;
+            transform-style: preserve-3d;
+        }
+        canvas { width: 100%; height: 100%; display: block; image-rendering: auto; }
+        
+        /* Link Layer - Absolute Top Z-Index */
         .annotationLayer { 
             position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
-            z-index: 20 !important; pointer-events: auto !important; 
-            user-select: text;
+            z-index: 999 !important; pointer-events: auto !important; 
         }
-        .annotationLayer section { pointer-events: auto !important; }
-        .annotationLayer a { cursor: pointer; pointer-events: auto !important; }
+        .annotationLayer section, .annotationLayer a { cursor: pointer; pointer-events: auto !important; }
 
-        .nav-btn { position: absolute; bottom: 10px; top: auto; transform: none; background: var(--btn-bg); border: none; color: white; width: 50px; height: 50px; border-radius: 50%; cursor: pointer; z-index: 1000; display: flex; align-items: center; justify-content: center; transition: 0.3s; font-size: 20px; backdrop-filter: blur(8px); }
+        .nav-btn { position: absolute; bottom: 10px; top: auto; transform: none; background: var(--btn-bg); border: none; color: white; width: 50px; height: 50px; border-radius: 50%; cursor: pointer; z-index: 2000; display: flex; align-items: center; justify-content: center; transition: 0.3s; font-size: 20px; backdrop-filter: blur(8px); }
         .nav-btn:hover { background: rgba(255,255,255,0.35); scale: 1.1; }
         .btn-prev { left: calc(50% - 65px); } .btn-next { left: calc(50% + 15px); }
         #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 9999; }
@@ -34,7 +37,7 @@
     </style>
 </head>
 <body>
-<div id="loader"><div class="spinner"></div><div id="status">Syncing HD Layers...</div></div>
+<div id="loader"><div class="spinner"></div><div id="status">Synchronizing...</div></div>
 <div id="viewport">
     <button class="nav-btn btn-prev" id="prevBtn">❮</button>
     <div id="my-book"></div>
@@ -67,14 +70,16 @@
                 div.className = 'page';
                 if (i === 1 || i === pdf.numPages) div.setAttribute('data-density', 'hard');
 
+                // 1. Render Image (Canvas) - Scale 1.5 for maximum smoothness
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d', { alpha: false });
-                const hdViewport = page.getViewport({ scale: 2 });
+                const hdViewport = page.getViewport({ scale: 1.5 });
                 canvas.height = hdViewport.height;
                 canvas.width = hdViewport.width;
                 await page.render({ canvasContext: ctx, viewport: hdViewport, intent: 'print' }).promise;
                 div.appendChild(canvas);
 
+                // 2. Render Link Layer
                 const annotationViewport = page.getViewport({ scale: (bookH / vp.height) });
                 const annotDiv = document.createElement('div');
                 annotDiv.className = 'annotationLayer';
@@ -91,7 +96,7 @@
                 div.appendChild(annotDiv);
 
                 bookDiv.appendChild(div);
-                document.getElementById('status').innerText = `Building HD Book: ${Math.round((i/pdf.numPages)*100)}%`;
+                document.getElementById('status').innerText = `Building: ${Math.round((i/pdf.numPages)*100)}%`;
             }
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
@@ -104,7 +109,7 @@
                 maxShadowOpacity: 0.1,
                 useMouseEvents: true,
                 autoSize: true,
-                clickEventForward: true // FIXED: set to true to let links receive clicks
+                clickEventForward: false // Let link layer handle clicks directly
             });
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
             document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
