@@ -7,22 +7,22 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
     <style>
-        :root { --arrow-bg: rgba(255, 255, 255, 0.1); --arrow-hover: rgba(255, 255, 255, 0.25); }
+        :root { --arrow-bg: rgba(0, 0, 0, 0.4); --arrow-hover: rgba(0, 0, 0, 0.7); }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #121212; font-family: sans-serif; }
         #viewport { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; position: relative; }
-        #my-book { box-shadow: 0 0 50px rgba(0,0,0,0.5); background: #fff; visibility: hidden; }
+        #my-book { box-shadow: 0 0 50px rgba(0,0,0,0.8); background: #fff; visibility: hidden; }
         .page { background: white; overflow: hidden; }
-        canvas { width: 100%; height: 100%; display: block; image-rendering: -webkit-optimize-contrast; }
-        .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); background: var(--arrow-bg); border: none; color: white; width: 60px; height: 60px; border-radius: 50%; cursor: pointer; z-index: 100; display: flex; align-items: center; justify-content: center; transition: 0.3s; backdrop-filter: blur(5px); font-size: 24px; }
-        .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
-        .btn-prev { left: 30px; } .btn-next { right: 30px; }
-        #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center; width: 90%; }
-        .err-msg { color: #ff4d4d; font-weight: bold; font-size: 1.2rem; }
+        canvas { width: 100%; height: 100%; display: block; }
+        .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); background: var(--arrow-bg); border: none; color: white; width: 50px; height: 50px; border-radius: 50%; cursor: pointer; z-index: 100; display: flex; align-items: center; justify-content: center; transition: 0.3s; font-size: 20px; }
+        .nav-btn:hover { background: var(--arrow-hover); transform: translateY(-50%) scale(1.1); }
+        .btn-prev { left: 20px; } .btn-next { right: 20px; }
+        #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center; }
+        .err-msg { color: #ff4d4d; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div id="loader"><div id="status-text">Building Flipbook...</div></div>
+<div id="loader"><div id="status-text">Initializing Engine...</div></div>
 
 <div id="viewport">
     <button class="nav-btn btn-prev" id="prevBtn">❮</button>
@@ -35,33 +35,32 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const urlParams = new URLSearchParams(window.location.search);
-    const githubFile = urlParams.get('pdf');
-    const driveId = urlParams.get('id');
+    const pdfFileName = urlParams.get('pdf'); // Expecting just the filename, e.g., "Pengantar Awal.pdf"
 
     async function init() {
-        let finalUrl = '';
-
-        if (githubFile) {
-            // FIX: Use encodeURI to handle the space in "Pengantar Awal.pdf"
-            // This tells the browser to look for the file in the same folder.
-            finalUrl = encodeURI(githubFile); 
-        } else if (driveId) {
-            const driveUrl = `https://drive.google.com/uc?export=download&id=${driveId}`;
-            finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(driveUrl)}`;
-        } else {
-            document.getElementById('status-text').innerHTML = "No source provided.";
+        if (!pdfFileName) {
+            document.getElementById('status-text').innerHTML = "No PDF filename provided.";
             return;
         }
 
+        // Use the relative path. Since index.html and PDF are in same folder, 
+        // we just need the encoded filename.
+        const finalUrl = encodeURIComponent(pdfFileName);
+
         try {
-            const pdf = await pdfjsLib.getDocument(finalUrl).promise;
+            const loadingTask = pdfjsLib.getDocument(finalUrl);
+            const pdf = await loadingTask.promise;
             const bookDiv = document.getElementById('my-book');
             
+            // Calculate dimensions based on first page
             const firstPage = await pdf.getPage(1);
-            const ratio = firstPage.getViewport({ scale: 1 }).width / firstPage.getViewport({ scale: 1 }).height;
+            const originalViewport = firstPage.getViewport({ scale: 1 });
+            const ratio = originalViewport.width / originalViewport.height;
 
-            let viewH = window.innerHeight * 0.95;
+            let viewH = window.innerHeight * 0.9;
             let viewW = viewH * ratio;
+
+            // Ensure it fits screen width
             if (viewW > window.innerWidth * 0.45) {
                 viewW = window.innerWidth * 0.45;
                 viewH = viewW / ratio;
@@ -69,27 +68,37 @@
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const renderViewport = page.getPageViewport({ scale: 1.5 }); 
+                const renderViewport = page.getViewport({ scale: 2 }); // High quality render
                 const canvas = document.createElement('canvas');
                 canvas.height = renderViewport.height;
                 canvas.width = renderViewport.width;
 
-                await page.render({ canvasContext: canvas.getContext('2d', { alpha: false }), viewport: renderViewport }).promise;
+                await page.render({ 
+                    canvasContext: canvas.getContext('2d'), 
+                    viewport: renderViewport 
+                }).promise;
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
                 pageDiv.appendChild(canvas);
                 bookDiv.appendChild(pageDiv);
                 
-                if (i % 5 === 0) document.getElementById('status-text').innerText = `Building: ${i}/${pdf.numPages}`;
+                document.getElementById('status-text').innerText = `Loading: ${Math.round((i/pdf.numPages)*100)}%`;
             }
 
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
 
             const pageFlip = new St.PageFlip(bookDiv, {
-                width: Math.round(viewW), height: Math.round(viewH),
-                size: "fixed", flippingTime: 800, useMouseEvents: true
+                width: Math.round(viewW),
+                height: Math.round(viewH),
+                size: "fixed",
+                minWidth: 300,
+                maxWidth: 1000,
+                minHeight: 400,
+                maxHeight: 1500,
+                showCover: true,
+                mobileScrollSupport: false
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
@@ -98,12 +107,13 @@
 
         } catch (err) {
             console.error(err);
-            document.getElementById('status-text').innerHTML = "<div class='err-msg'>FAILED TO SYNC DOCUMENT</div><p style='font-size:12px; margin-top:10px;'>Verify that '" + githubFile + "' exists in this folder with exact capitals.</p>";
+            document.getElementById('status-text').innerHTML = 
+                `<div class='err-msg'>CANNOT LOAD PDF</div>
+                 <p style='font-size:12px;'>Check if <b>${pdfFileName}</b> exists in the GitHub folder.</p>`;
         }
     }
 
     init();
-    window.addEventListener('resize', () => location.reload());
 </script>
 </body>
 </html>
