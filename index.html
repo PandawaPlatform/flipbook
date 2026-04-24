@@ -17,20 +17,12 @@
         .nav-btn:hover { background: var(--arrow-hover); scale: 1.1; }
         .btn-prev { left: 30px; } .btn-next { right: 30px; }
         #loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center; width: 90%; }
-        .err { color: #ff4d4d; font-weight: bold; font-size: 1.2rem; }
-        .debug { color: #777; font-size: 11px; margin-top: 15px; background: #222; padding: 10px; border-radius: 8px; word-break: break-all; }
+        .err-msg { color: #ff4d4d; font-weight: bold; font-size: 1.2rem; }
     </style>
 </head>
 <body>
 
-<div id="loader">
-    <div id="status-text">Building Flipbook...</div>
-    <div id="debug-area" style="display:none;">
-        <div class="err">ERROR: FILE NOT FOUND</div>
-        <div id="debug-url" class="debug"></div>
-        <p style="font-size:12px; color:#555; margin-top:10px;">1. Is the file name exact? 2. Is the repo PUBLIC?</p>
-    </div>
-</div>
+<div id="loader"><div id="status-text">Building Flipbook...</div></div>
 
 <div id="viewport">
     <button class="nav-btn btn-prev" id="prevBtn">❮</button>
@@ -47,19 +39,19 @@
     const driveId = urlParams.get('id');
 
     async function init() {
-        let sourceUrl = '';
+        let finalUrl = '';
+
         if (githubFile) {
-            // FIX: We do NOT encodeURIComponent here because the 'finalUrl' encoding handles it.
-            sourceUrl = `https://raw.githubusercontent.com/PandawaPlatform/flipbook/main/${githubFile}`;
+            // THE SMART PART: Load directly from the same repo. No Proxy. No Full URL.
+            // This handles the space automatically because it's a relative path.
+            finalUrl = githubFile; 
         } else if (driveId) {
-            sourceUrl = `https://drive.google.com/uc?export=download&id=${driveId}`;
+            const driveUrl = `https://drive.google.com/uc?export=download&id=${driveId}`;
+            finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(driveUrl)}`;
         } else {
             document.getElementById('status-text').innerHTML = "No source provided.";
             return;
         }
-
-        // Final URL for Proxy - This correctly handles spaces in 'sourceUrl'
-        const finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`;
 
         try {
             const pdf = await pdfjsLib.getDocument(finalUrl).promise;
@@ -77,33 +69,27 @@
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const renderViewport = page.getPageViewport({ scale: 1.5 }); // FAST SCALE
+                const renderViewport = page.getPageViewport({ scale: 1.5 }); 
                 const canvas = document.createElement('canvas');
                 canvas.height = renderViewport.height;
                 canvas.width = renderViewport.width;
 
-                await page.render({ 
-                    canvasContext: canvas.getContext('2d', { alpha: false }), 
-                    viewport: renderViewport 
-                }).promise;
+                await page.render({ canvasContext: canvas.getContext('2d', { alpha: false }), viewport: renderViewport }).promise;
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
                 pageDiv.appendChild(canvas);
                 bookDiv.appendChild(pageDiv);
                 
-                if (i % 2 === 0) document.getElementById('status-text').innerText = `Loading: ${i}/${pdf.numPages}`;
+                if (i % 5 === 0) document.getElementById('status-text').innerText = `Syncing: ${i}/${pdf.numPages}`;
             }
 
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
 
             const pageFlip = new St.PageFlip(bookDiv, {
-                width: Math.round(viewW),
-                height: Math.round(viewH),
-                size: "fixed", 
-                flippingTime: 800,
-                useMouseEvents: true
+                width: Math.round(viewW), height: Math.round(viewH),
+                size: "fixed", flippingTime: 800, useMouseEvents: true
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
@@ -112,9 +98,7 @@
 
         } catch (err) {
             console.error(err);
-            document.getElementById('status-text').style.display = 'none';
-            document.getElementById('debug-area').style.display = 'block';
-            document.getElementById('debug-url').innerText = sourceUrl;
+            document.getElementById('status-text').innerHTML = "<div class='err-msg'>FAILED TO SYNC DOCUMENT</div><p style='font-size:12px; margin-top:10px;'>Verify that '" + githubFile + "' is in the same folder as this page.</p>";
         }
     }
 
