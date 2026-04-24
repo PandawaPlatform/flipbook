@@ -47,24 +47,69 @@
         // we just need the encoded filename.
         const finalUrl = encodeURIComponent(pdfFileName);
 
-        try {
-            const loadingTask = pdfjsLib.getDocument(finalUrl);
-            const pdf = await loadingTask.promise;
+try {
+            const pdf = await pdfjsLib.getDocument(finalUrl).promise;
             const bookDiv = document.getElementById('my-book');
             
-            // Calculate dimensions based on first page
             const firstPage = await pdf.getPage(1);
-            const originalViewport = firstPage.getViewport({ scale: 1 });
-            const ratio = originalViewport.width / originalViewport.height;
+            const pdfViewport = firstPage.getViewport({ scale: 1 });
+            const ratio = pdfViewport.width / pdfViewport.height;
 
+            // CALCULATION LOGIC
+            // 1. We want the book to be 90% of the available height
             let viewH = window.innerHeight * 0.9;
+            // 2. The width of ONE page based on that height
             let viewW = viewH * ratio;
 
-            // Ensure it fits screen width
-            if (viewW > window.innerWidth * 0.45) {
-                viewW = window.innerWidth * 0.45;
+            // 3. Safety Check: If TWO pages side-by-side are wider than the screen, 
+            // we shrink it based on width instead.
+            if ((viewW * 2) > window.innerWidth * 0.95) {
+                viewW = (window.innerWidth * 0.95) / 2;
                 viewH = viewW / ratio;
             }
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                // Use scale 2 for "Retina/HD" quality
+                const renderViewport = page.getViewport({ scale: 2 }); 
+                const canvas = document.createElement('canvas');
+                canvas.height = renderViewport.height;
+                canvas.width = renderViewport.width;
+
+                await page.render({ 
+                    canvasContext: canvas.getContext('2d'), 
+                    viewport: renderViewport 
+                }).promise;
+
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'page';
+                pageDiv.appendChild(canvas);
+                bookDiv.appendChild(pageDiv);
+                
+                document.getElementById('status-text').innerText = `Syncing: ${i}/${pdf.numPages}`;
+            }
+
+            document.getElementById('loader').style.display = 'none';
+            bookDiv.style.visibility = 'visible';
+
+            const pageFlip = new St.PageFlip(bookDiv, {
+                width: Math.round(viewW), 
+                height: Math.round(viewH),
+                size: "fixed",
+                minWidth: 200,
+                maxWidth: 2000,
+                minHeight: 200,
+                maxHeight: 2000,
+                showCover: true, // This makes the first page a single cover
+                drawShadow: true
+            });
+
+            pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+            
+            document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
+            document.getElementById('nextBtn').onclick = () => pageFlip.flipNext();
+
+        }
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
