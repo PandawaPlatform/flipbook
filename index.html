@@ -7,26 +7,16 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
     <style>
-        :root { --arrow-bg: rgba(0, 0, 0, 0.6); }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #121212; font-family: sans-serif; }
+        :root { --arrow-bg: rgba(255, 255, 255, 0.15); --arrow-hover: rgba(255, 255, 255, 0.3); }
+        /* Match the background to your parent app for a seamless look */
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; font-family: sans-serif; }
         
-        /* THE VIEWPORT - Ensures everything is centered */
         #viewport { 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            width: 100vw; 
-            height: 100vh; 
-            position: relative;
-            perspective: 2000px; /* Adds 3D depth for the flip */
+            display: flex; justify-content: center; align-items: center; 
+            width: 100vw; height: 100vh; position: relative; perspective: 2000px; 
         }
 
-        #my-book { 
-            box-shadow: 0 20px 60px rgba(0,0,0,0.8); 
-            background: #fff; 
-            visibility: hidden; 
-        }
-
+        #my-book { box-shadow: 0 20px 60px rgba(0,0,0,0.8); background: #fff; visibility: hidden; }
         .page { background: white; overflow: hidden; }
         canvas { width: 100%; height: 100%; display: block; }
 
@@ -36,15 +26,14 @@
             width: 55px; height: 55px; border-radius: 50%; 
             cursor: pointer; z-index: 100; display: flex; 
             align-items: center; justify-content: center; 
-            transition: 0.3s; font-size: 24px; 
+            transition: 0.3s; font-size: 24px; backdrop-filter: blur(5px);
         }
-        .nav-btn:hover { background: #000; transform: translateY(-50%) scale(1.1); }
-        .btn-prev { left: 15px; } 
-        .btn-next { right: 15px; }
+        .nav-btn:hover { background: var(--arrow-hover); transform: translateY(-50%) scale(1.1); }
+        .btn-prev { left: 15px; } .btn-next { right: 15px; }
 
         #loader { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: #121212; display: flex; flex-direction: column; 
+            background: #1a1a1a; display: flex; flex-direction: column; 
             justify-content: center; align-items: center; color: white; z-index: 999; 
         }
         .loading-spinner {
@@ -59,7 +48,7 @@
 
 <div id="loader">
     <div class="loading-spinner"></div>
-    <div id="status-text">Synchronizing...</div>
+    <div id="status-text">Synchronizing Engine...</div>
 </div>
 
 <div id="viewport">
@@ -77,7 +66,7 @@
 
     async function init() {
         if (!pdfFileName) {
-            document.getElementById('status-text').innerHTML = "Error: No File Selected";
+            document.getElementById('status-text').innerHTML = "Error: Missing File Parameter";
             return;
         }
 
@@ -85,32 +74,25 @@
             const pdf = await pdfjsLib.getDocument(pdfFileName).promise;
             const bookDiv = document.getElementById('my-book');
             
-            // 1. GET ACTUAL PDF DIMENSIONS
             const firstPage = await pdf.getPage(1);
             const originalViewport = firstPage.getViewport({ scale: 1 });
-            
-            // IMPORTANT: Handle rotation correctly
-            const isLandscape = originalViewport.width > originalViewport.height;
             const pdfRatio = originalViewport.width / originalViewport.height;
 
-            // 2. CALCULATE OPTIMAL SIZE
-            // We want the book to fill 90% of the available height or width
+            // Math tuned for your 85vh container
             const containerW = window.innerWidth;
             const containerH = window.innerHeight;
             
-            let finalH = containerH * 0.92;
+            let finalH = containerH * 0.94;
             let finalW = finalH * pdfRatio;
 
-            // Safety: if two pages (spread) are wider than the screen, shrink to fit width
-            if ((finalW * 2) > containerW * 0.85) {
-                finalW = (containerW * 0.85) / 2;
+            // Check if 2-page spread fits width-wise
+            if ((finalW * 2) > containerW * 0.9) {
+                finalW = (containerW * 0.9) / 2;
                 finalH = finalW / pdfRatio;
             }
 
-            // 3. RENDER PAGES
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                // Render at high resolution (scale 2)
                 const renderViewport = page.getViewport({ scale: 2 });
                 const canvas = document.createElement('canvas');
                 canvas.height = renderViewport.height;
@@ -126,37 +108,33 @@
                 pageDiv.appendChild(canvas);
                 bookDiv.appendChild(pageDiv);
                 
-                document.getElementById('status-text').innerText = `Processing: ${Math.round((i/pdf.numPages)*100)}%`;
+                document.getElementById('status-text').innerText = `Syncing Content: ${Math.round((i/pdf.numPages)*100)}%`;
             }
 
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
 
-            // 4. START FLIPBOOK
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: Math.round(finalW),
                 height: Math.round(finalH),
                 size: "fixed",
                 showCover: true,
                 drawShadow: true,
-                maxShadowOpacity: 0.5,
                 useMouseEvents: true,
-                flippingTime: 1000
+                flippingTime: 800
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-            
             document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
             document.getElementById('nextBtn').onclick = () => pageFlip.flipNext();
 
         } catch (err) {
-            document.getElementById('status-text').innerHTML = `<div style="color:#ff4d4d">FAILED: ${err.message}</div>`;
+            document.getElementById('status-text').innerHTML = `<div style="color:#ff4d4d">CRITICAL ERROR: ${err.message}</div>`;
         }
     }
 
     init();
 
-    // Prevent annoying reload loop but fix layout on resize
     let resizeTimer;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
