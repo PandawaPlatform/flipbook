@@ -3,126 +3,145 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pandawa Reader Pro HD</title>
+    <title>Pandawa Reader Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
     <style>
-        :root { --bg-color: #1a1a1a; --btn-bg: rgba(255, 255, 255, 0.2); }
+        :root { --bg-color: #1a1a1a; --btn-bg: rgba(255, 255, 255, 0.1); }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg-color); font-family: sans-serif; }
-        #viewport { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; position: relative; }
-        #my-book { background: transparent; visibility: hidden; }
         
-        /* STABILITY FIX: Added transform-style and perspective for smoother flipping */
-        .page { 
-            background: white; overflow: hidden; box-shadow: inset -5px 0 10px rgba(0,0,0,0.1); 
-            position: relative; backface-visibility: hidden; will-change: transform;
-            transform-style: preserve-3d;
+        #viewport { 
+            display: flex; justify-content: center; align-items: center; 
+            width: 100vw; height: 100vh; position: relative; 
         }
-        canvas { width: 100%; height: 100%; display: block; image-rendering: auto; }
-        
-        /* Link Layer - Absolute Top Z-Index */
-        .annotationLayer { 
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
-            z-index: 999 !important; pointer-events: auto !important; 
-        }
-        .annotationLayer section, .annotationLayer a { cursor: pointer; pointer-events: auto !important; }
 
-        .nav-btn { position: absolute; bottom: 10px; top: auto; transform: none; background: var(--btn-bg); border: none; color: white; width: 50px; height: 50px; border-radius: 50%; cursor: pointer; z-index: 2000; display: flex; align-items: center; justify-content: center; transition: 0.3s; font-size: 20px; backdrop-filter: blur(8px); }
-        .nav-btn:hover { background: rgba(255,255,255,0.35); scale: 1.1; }
-        .btn-prev { left: calc(50% - 65px); } .btn-next { left: calc(50% + 15px); }
-        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 9999; }
+        #my-book { background: transparent; visibility: hidden; }
+
+        .page { background: white; overflow: hidden; box-shadow: inset -5px 0 10px rgba(0,0,0,0.1); }
+        canvas { width: 100%; height: 100%; display: block; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
+
+        .nav-btn { 
+            position: absolute; 
+            bottom: 30px; 
+            top: auto; 
+            transform: none; 
+            background: var(--btn-bg); border: none; color: white; 
+            width: 50px; height: 50px; border-radius: 50%; 
+            cursor: pointer; z-index: 100; display: flex; 
+            align-items: center; justify-content: center; 
+            transition: 0.3s; font-size: 20px; backdrop-filter: blur(8px);
+        }
+        .nav-btn:hover { background: rgba(255,255,255,0.25); scale: 1.1; }
+        .btn-prev { left: calc(50% - 65px); } 
+        .btn-next { left: calc(50% + 15px); }
+
+        #loader { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: var(--bg-color); display: flex; flex-direction: column; 
+            justify-content: center; align-items: center; color: white; z-index: 999; 
+        }
         .spinner { width: 30px; height: 30px; border: 3px solid #333; border-top: 3px solid #2563eb; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-<div id="loader"><div class="spinner"></div><div id="status">Synchronizing...</div></div>
+
+<div id="loader"><div class="spinner"></div><div id="status">Reading Document...</div></div>
+
 <div id="viewport">
     <button class="nav-btn btn-prev" id="prevBtn">❮</button>
     <div id="my-book"></div>
     <button class="nav-btn btn-next" id="nextBtn">❯</button>
 </div>
+
 <script>
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
     const params = new URLSearchParams(window.location.search);
     const pdfUrl = decodeURIComponent(params.get('pdf') || '');
+
     async function start() {
         if (!pdfUrl) { document.getElementById('status').innerText = "No PDF Found"; return; }
+
         try {
             const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
             const bookDiv = document.getElementById('my-book');
+            
             const firstPage = await pdf.getPage(1);
             const vp = firstPage.getViewport({ scale: 1 });
             const pdfRatio = vp.width / vp.height;
+
             const winW = window.innerWidth;
             const winH = window.innerHeight;
-            let bookH = winH; 
+
+            let bookH = winH;
             let bookW = bookH * pdfRatio;
+
             if ((bookW * 2) > winW) {
                 bookW = winW / 2;
                 bookH = bookW / pdfRatio;
             }
+
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                const hdViewport = page.getViewport({ scale: 3 });
+                canvas.height = hdViewport.height;
+                canvas.width = hdViewport.width;
+
+                await page.render({ canvasContext: ctx, viewport: hdViewport, intent: 'print' }).promise;
+
                 const div = document.createElement('div');
                 div.className = 'page';
                 if (i === 1 || i === pdf.numPages) div.setAttribute('data-density', 'hard');
-
-                // 1. Render Image (Canvas) - Scale 1.5 for maximum smoothness
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d', { alpha: false });
-                const hdViewport = page.getViewport({ scale: 1.5 });
-                canvas.height = hdViewport.height;
-                canvas.width = hdViewport.width;
-                await page.render({ canvasContext: ctx, viewport: hdViewport, intent: 'print' }).promise;
+                
                 div.appendChild(canvas);
-
-                // 2. Render Link Layer
-                const annotationViewport = page.getViewport({ scale: (bookH / vp.height) });
-                const annotDiv = document.createElement('div');
-                annotDiv.className = 'annotationLayer';
-                const annotations = await page.getAnnotations();
-                
-                const annotationLayer = new pdfjsLib.AnnotationLayer({
-                    viewport: annotationViewport.clone({ dontFlip: true }),
-                    div: annotDiv,
-                    annotations: annotations,
-                    page: page
-                });
-                
-                annotationLayer.render(annotationViewport);
-                div.appendChild(annotDiv);
-
                 bookDiv.appendChild(div);
+                
                 document.getElementById('status').innerText = `Building: ${Math.round((i/pdf.numPages)*100)}%`;
             }
+
             document.getElementById('loader').style.display = 'none';
             bookDiv.style.visibility = 'visible';
+
             const pageFlip = new St.PageFlip(bookDiv, {
                 width: Math.round(bookW),
                 height: Math.round(bookH),
                 size: "fixed",
+                minWidth: 200,
+                maxWidth: 2000,
+                minHeight: 200,
+                maxHeight: 2000,
                 showCover: true,
                 drawShadow: true,
-                maxShadowOpacity: 0.1,
+                maxShadowOpacity: 0.2,
+                flippingTime: 800,
                 useMouseEvents: true,
-                autoSize: true,
-                clickEventForward: false // Let link layer handle clicks directly
+                swipeDistance: 30,
+                startPage: 0,
+                autoSize: true
             });
+
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
             document.getElementById('prevBtn').onclick = () => pageFlip.flipPrev();
             document.getElementById('nextBtn').onclick = () => pageFlip.flipNext();
+
             pageFlip.on('flip', (e) => {
                 document.getElementById('prevBtn').style.opacity = (e.data === 0) ? "0" : "1";
                 document.getElementById('nextBtn').style.opacity = (e.data === pdf.numPages - 1) ? "0" : "1";
             });
+
         } catch (e) {
             document.getElementById('status').innerHTML = `<span style="color:red">Error: ${e.message}</span>`;
         }
     }
+
     start();
+
     let t;
     window.onresize = () => { clearTimeout(t); t = setTimeout(() => location.reload(), 500); };
 </script>
