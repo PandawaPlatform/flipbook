@@ -19,7 +19,7 @@
         #my-book { background: transparent; visibility: hidden; }
 
         .page { background: white; overflow: hidden; box-shadow: inset -5px 0 10px rgba(0,0,0,0.1); }
-        canvas { width: 100%; height: 100%; display: block; }
+        canvas { width: 100%; height: 100%; display: block; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
 
         .nav-btn { 
             position: absolute; top: 50%; transform: translateY(-50%); 
@@ -73,13 +73,13 @@
             const winW = window.innerWidth;
             const winH = window.innerHeight;
 
-            // Target Height is 90% of iframe height
-            let bookH = winH * 0.9;
+            // Target Height is 100% of iframe height to remove gaps
+            let bookH = winH;
             let bookW = bookH * pdfRatio;
 
             // Check if double-page spread exceeds screen width
-            if ((bookW * 2) > winW * 0.9) {
-                bookW = (winW * 0.9) / 2;
+            if ((bookW * 2) > winW) {
+                bookW = winW / 2;
                 bookH = bookW / pdfRatio;
             }
 
@@ -89,12 +89,12 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // Render at high resolution for Flowpaper quality
-                const highResVp = page.getViewport({ scale: 2 });
+                // Render at high resolution (scale 3) for readability
+                const highResVp = page.getViewport({ scale: 3 });
                 canvas.height = highResVp.height;
                 canvas.width = highResVp.width;
 
-                await page.render({ canvasContext: ctx, viewport: highResVp }).promise;
+                await page.render({ canvasContext: ctx, viewport: highResVp, intent: 'print' }).promise;
 
                 const div = document.createElement('div');
                 div.className = 'page';
