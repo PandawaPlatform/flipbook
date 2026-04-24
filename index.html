@@ -42,9 +42,9 @@
         let finalUrl = '';
 
         if (githubFile) {
-            // THE SMART PART: Load directly from the same repo. No Proxy. No Full URL.
-            // This handles the space automatically because it's a relative path.
-            finalUrl = githubFile; 
+            // FIX: Use encodeURI to handle the space in "Pengantar Awal.pdf"
+            // This tells the browser to look for the file in the same folder.
+            finalUrl = encodeURI(githubFile); 
         } else if (driveId) {
             const driveUrl = `https://drive.google.com/uc?export=download&id=${driveId}`;
             finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(driveUrl)}`;
@@ -81,7 +81,7 @@
                 pageDiv.appendChild(canvas);
                 bookDiv.appendChild(pageDiv);
                 
-                if (i % 5 === 0) document.getElementById('status-text').innerText = `Syncing: ${i}/${pdf.numPages}`;
+                if (i % 5 === 0) document.getElementById('status-text').innerText = `Building: ${i}/${pdf.numPages}`;
             }
 
             document.getElementById('loader').style.display = 'none';
@@ -98,7 +98,7 @@
 
         } catch (err) {
             console.error(err);
-            document.getElementById('status-text').innerHTML = "<div class='err-msg'>FAILED TO SYNC DOCUMENT</div><p style='font-size:12px; margin-top:10px;'>Verify that '" + githubFile + "' is in the same folder as this page.</p>";
+            document.getElementById('status-text').innerHTML = "<div class='err-msg'>FAILED TO SYNC DOCUMENT</div><p style='font-size:12px; margin-top:10px;'>Verify that '" + githubFile + "' exists in this folder with exact capitals.</p>";
         }
     }
 
